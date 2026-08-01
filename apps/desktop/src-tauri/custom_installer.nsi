@@ -203,23 +203,15 @@ Function ConsentPageShow
   CreateFont $2 "Segoe UI" 10
   CreateFont $3 "Segoe UI" 10 700
 
-  ${NSD_CreateLabel} 0 0 100% 20u "Send2Me is a localized, peer-to-peer file transfer tool. To protect both you and us, please acknowledge:"
+  ${NSD_CreateLabel} 0 0 100% 24u "Send2Me is a localized, peer-to-peer file transfer tool. To protect both you and us, please acknowledge:"
   Pop $0
   SendMessage $0 ${WM_SETFONT} $3 1
 
-  ${NSD_CreateLabel} 10u 22u 90% 20u "• No Cloud Storage: Files are sent directly device-to-device. We never store, scan, or monitor the contents of your files."
+  ${NSD_CreateLabel} 10u 26u 90% 72u "• No Cloud Storage: Files are sent directly device-to-device. We never store, scan, or monitor the contents of your files.$\r$\n$\r$\n• Sole Responsibility: You (the user) assume 100% legal responsibility for the safety, copyright, and legality of the files you transfer.$\r$\n$\r$\n• Local Data Only: Your transfer history and pairing codes live entirely on this device and are never uploaded."
   Pop $0
   SendMessage $0 ${WM_SETFONT} $2 1
 
-  ${NSD_CreateLabel} 10u 44u 90% 20u "• Sole Responsibility: You (the user) assume 100% legal responsibility for the safety, copyright, and legality of the files you transfer."
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $2 1
-
-  ${NSD_CreateLabel} 10u 66u 90% 20u "• Local Data Only: Your transfer history and pairing codes live entirely on this device and are never uploaded."
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $2 1
-
-  ${NSD_CreateCheckbox} 0 88u 100% 20u "I understand how Send2Me works, accept the terms, and assume full responsibility for my transfers. (Required)"
+  ${NSD_CreateCheckbox} 0 102u 100% 24u "I understand how Send2Me works, accept the terms, and assume full responsibility for my transfers. (Required)"
   Pop $ConsentCheckboxTerms
   SendMessage $ConsentCheckboxTerms ${WM_SETFONT} $3 1
   ${NSD_SetState} $ConsentCheckboxTerms ${BST_UNCHECKED}
@@ -229,7 +221,7 @@ Function ConsentPageShow
   GetDlgItem $0 $HWNDPARENT 1
   EnableWindow $0 0
 
-  ${NSD_CreateCheckbox} 0 110u 100% 20u "Allow anonymous crash reports to help Gaurav Patil improve Send2Me. (Optional)"
+  ${NSD_CreateCheckbox} 0 128u 100% 20u "Allow anonymous crash reports to help Gaurav Patil improve Send2Me. (Optional)"
   Pop $ConsentCheckboxTelemetry
   SendMessage $ConsentCheckboxTelemetry ${WM_SETFONT} $2 1
   ${NSD_SetState} $ConsentCheckboxTelemetry ${BST_UNCHECKED}
@@ -560,7 +552,7 @@ Function FirewallPageShow
   ${NSD_CreateLabel} 0 0 100% 32u "An exception must be added to the firewall to enable users to connect. Send2Me can attempt to add this exception, or you can configure the firewall yourself."
   Pop $0
   
-  ${NSD_CreateCheckbox} 0 40u 100% 12u "Add an exception to the Windows firewall for Send2Me"
+  ${NSD_CreateCheckbox} 0 40u 100% 16u "Add an exception to the Windows firewall for Send2Me"
   Pop $FirewallCheckbox
   ${NSD_SetState} $FirewallCheckbox ${BST_CHECKED}
   

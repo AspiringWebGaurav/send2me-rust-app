@@ -1,0 +1,455 @@
+use std::collections::HashMap;
+use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::Context;
+use iroh::endpoint::Connection;
+use iroh::EndpointId;
+use protocol::{
+    export_connection_keying_material, read_message, sign_challenge, verify_challenge,
+    write_message, ControlMessage, InviteResponse, PairedDevice, CONTROL_ALPN,
+    PAIRED_INVITE_WAIT_SECS, PAIRED_RECONNECT_MAX_SECS, PAIRED_RECONNECT_MIN_SECS,
+    PRESENCE_CONNECT_TIMEOUT_SECS,
+};
+use tokio::sync::{Mutex, Notify, OnceCell, RwLock};
+use tokio::task::JoinHandle;
+
+use crate::device_identity::{DeviceIdentity, PairedDeviceStore};
+use crate::pairing_util::{
+    build_control_connect_addr, emit_paired_invite_received,
+    emit_paired_invite_response, set_presence,
+};
+use protocol::AppHandle;
+
+struct SessionWaiter {
+    notify: Arc<Notify>,
+}
+
+/// Maintains persistent outbound control connections to paired devices.
+/// Presence is derived from live connection state instead of polling probes.
+pub struct PairedConnectionManager {
+    runtime: Arc<OnceCell<Arc<Mutex<crate::runtime::NodeRuntime>>>>,
+    identity: Arc<DeviceIdentity>,
+    paired_store: Arc<PairedDeviceStore>,
+    presence: Arc<std::sync::RwLock<HashMap<String, bool>>>,
+    app_handle: AppHandle,
+    sessions: Arc<RwLock<HashMap<String, Connection>>>,
+    waiters: Arc<Mutex<HashMap<String, SessionWaiter>>>,
+    tasks: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
+    shutdown: Arc<AtomicBool>,
+}
+
+impl PairedConnectionManager {
+    pub fn new(
+        identity: Arc<DeviceIdentity>,
+        paired_store: Arc<PairedDeviceStore>,
+        presence: Arc<std::sync::RwLock<HashMap<String, bool>>>,
+        app_handle: AppHandle,
+    ) -> Self {
+
+        Self {
+            runtime: Arc::new(OnceCell::new()),
+            identity,
+            paired_store,
+            presence,
+            app_handle,
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            waiters: Arc::new(Mutex::new(HashMap::new())),
+            tasks: Arc::new(Mutex::new(HashMap::new())),
+            shutdown: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn attach_runtime(&self, runtime: Arc<Mutex<crate::runtime::NodeRuntime>>) {
+
+        let _ = self.runtime.set(runtime);
+    }
+
+    pub fn start(self: &Arc<Self>) -> JoinHandle<()> {
+
+        let manager = Arc::clone(self);
+        tokio::spawn(async move {
+            manager.run_supervisor().await;
+        })
+    }
+
+    pub async fn refresh(&self) {
+
+        let devices = match self.paired_store.list() {
+            Ok(devices) => devices,
+            Err(_err) => {
+
+                return;
+            }
+        };
+        let active: Vec<PairedDevice> = devices
+            .into_iter()
+            .filter(|d| d.pairing_status.is_connectable())
+            .collect();
+        let active_ids: std::collections::HashSet<String> = active
+            .iter()
+            .map(|d| d.endpoint_id.to_lowercase())
+            .collect();
+
+        let mut tasks = self.tasks.lock().await;
+        let before = tasks.len();
+        tasks.retain(|endpoint_id, handle| {
+            if active_ids.contains(endpoint_id) {
+                true
+            } else {
+
+                handle.abort();
+                false
+            }
+        });
+        let _ = tasks.len() != before;
+
+        for device in active {
+            let key = device.endpoint_id.to_lowercase();
+            if tasks.contains_key(&key) {
+
+                continue;
+            }
+
+            let handle = self.spawn_connect_task(device);
+            tasks.insert(key, handle);
+        }
+
+    }
+
+    pub async fn forget(&self, endpoint_id: &str) {
+        let key = endpoint_id.to_lowercase();
+
+        if let Some(handle) = self.tasks.lock().await.remove(&key) {
+            handle.abort();
+
+        }
+        self.remove_session(&key).await;
+    }
+
+    pub async fn shutdown(&self) {
+        self.shutdown.store(true, Ordering::SeqCst);
+        let mut tasks = self.tasks.lock().await;
+        for (_, handle) in tasks.drain() {
+            handle.abort();
+        }
+        self.sessions.write().await.clear();
+    }
+
+    /// Returns a live connection if one exists, otherwise waits until connected or timeout.
+    pub async fn wait_for_connection(
+        &self,
+        endpoint_id: &str,
+        timeout: Duration,
+    ) -> Option<Connection> {
+        let key = endpoint_id.to_lowercase();
+                if let Some(conn) = self.sessions.read().await.get(&key).cloned() {
+
+            return Some(conn);
+        }
+
+        let notify = {
+            let mut waiters = self.waiters.lock().await;
+            waiters
+                .entry(key.clone())
+                .or_insert_with(|| SessionWaiter {
+                    notify: Arc::new(Notify::new()),
+                })
+                .notify
+                .clone()
+        };
+
+        let wait = async {
+            loop {
+                if let Some(conn) = self.sessions.read().await.get(&key).cloned() {
+                    return Some(conn);
+                }
+                notify.notified().await;
+            }
+        };
+        match tokio::time::timeout(timeout, wait).await {
+            Ok(Some(conn)) => {
+
+                Some(conn)
+            }
+            Ok(None) => None,
+            Err(_) => {
+
+                None
+            }
+        }
+    }
+
+    pub async fn register_inbound(&self, endpoint_id: &str, conn: Connection) {
+        let key = endpoint_id.to_lowercase();
+        
+        self.set_session(&key, conn).await;
+    }
+
+    pub async fn unregister_inbound(&self, endpoint_id: &str) {
+        let key = endpoint_id.to_lowercase();
+
+        self.remove_session(&key).await;
+    }
+
+    async fn run_supervisor(self: Arc<Self>) {
+
+        self.refresh().await;
+        loop {
+            if self.shutdown.load(Ordering::SeqCst) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            if self.shutdown.load(Ordering::SeqCst) {
+                break;
+            }
+
+            self.refresh().await;
+        }
+
+    }
+
+    fn spawn_connect_task(&self, device: PairedDevice) -> JoinHandle<()> {
+        let manager = Arc::new(PairedConnectionManager {
+            runtime: self.runtime.clone(),
+            identity: self.identity.clone(),
+            paired_store: self.paired_store.clone(),
+            presence: self.presence.clone(),
+            app_handle: self.app_handle.clone(),
+            sessions: self.sessions.clone(),
+            waiters: self.waiters.clone(),
+            tasks: self.tasks.clone(),
+            shutdown: self.shutdown.clone(),
+        });
+        let endpoint_id = device.endpoint_id.clone();
+        let relay_url = device.relay_url.clone();
+        tokio::spawn(async move {
+            manager
+                .connect_loop(&endpoint_id, relay_url.as_deref())
+                .await;
+        })
+    }
+
+    async fn connect_loop(&self, endpoint_id: &str, stored_relay: Option<&str>) {
+        let key = endpoint_id.to_lowercase();
+        let mut backoff_secs = PAIRED_RECONNECT_MIN_SECS;
+        let mut attempt: u32 = 0;
+
+        while !self.shutdown.load(Ordering::SeqCst) {
+            attempt += 1;
+            if !self.device_still_active(endpoint_id) {
+
+                break;
+            }
+
+            match self.connect_and_recognize(endpoint_id, stored_relay, attempt).await {
+                Ok(conn) => {
+                    backoff_secs = PAIRED_RECONNECT_MIN_SECS;
+
+                    self.set_session(&key, conn.clone()).await;
+
+                    // Read invites on the outbound (client) connection. The peer opens
+                    // bi streams on this link when they are the QUIC server.
+                    tokio::select! {
+                        _ = conn.closed() => {}
+                        _ = self.read_outbound_control_loop(&conn) => {}
+                    }
+                    self.remove_session(&key).await;
+                }
+                Err(_err) => {
+                    set_presence(
+                        &self.presence,
+                        &self.app_handle,
+                        &self.paired_store,
+                        endpoint_id,
+                        false,
+                    );
+                }
+            }
+
+            if self.shutdown.load(Ordering::SeqCst) {
+
+                break;
+            }
+
+            tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
+            backoff_secs = (backoff_secs * 2).min(PAIRED_RECONNECT_MAX_SECS);
+        }
+
+    }
+
+    async fn connect_and_recognize(
+        &self,
+        endpoint_id: &str,
+        stored_relay: Option<&str>,
+        _attempt: u32,
+    ) -> anyhow::Result<Connection> {
+        let remote = EndpointId::from_str(endpoint_id)?;
+        let runtime = self
+            .runtime
+            .get()
+            .context("paired connection manager runtime not attached")?;
+
+        // Clone the endpoint under the short-lived runtime lock, then connect
+        // outside it. Holding the mutex across connect timeouts serialized every
+        // presence reconnect and blocked pairing_ticket / Devices UI for ~8s
+        // per offline peer.
+        let endpoint = {
+            let runtime = runtime.lock().await;
+            runtime.endpoint.clone()
+        };
+        let addr = build_control_connect_addr(&endpoint, remote, stored_relay);
+        let conn = tokio::time::timeout(
+            Duration::from_secs(PRESENCE_CONNECT_TIMEOUT_SECS),
+            endpoint.connect(addr, CONTROL_ALPN),
+        )
+        .await
+        .context("paired connect timeout")?
+        .context("paired connect failed")?;
+        
+        let keying = export_connection_keying_material(&conn).context("export keying")?;
+
+        let (mut send, _recv) = conn
+            .open_bi()
+            .await
+            .context("open bi for recognition")?;
+        let recognition = ControlMessage::Recognition {
+            signature: sign_challenge(&self.identity.secret_key, &keying),
+        };
+        write_message(&mut send, &recognition)
+            .await
+            .context("write recognition")?;
+
+        Ok(conn)
+    }
+
+    /// Accept bi streams on an outbound (client) control connection and handle invites.
+    async fn read_outbound_control_loop(&self, conn: &Connection) {
+        let remote = conn.remote_id();
+        let remote_id = remote.to_string();
+                let keying = match export_connection_keying_material(conn) {
+            Ok(keying) => keying,
+            Err(_err) => {
+
+                return;
+            }
+        };
+        loop {
+            let (_send, mut recv) = match conn.accept_bi().await {
+                Ok(streams) => streams,
+                Err(_err) => {
+
+                    break;
+                }
+            };
+
+            let msg = match read_message(&mut recv).await {
+                Ok(m) => m,
+                Err(_err) => {
+
+                    continue;
+                }
+            };
+
+            match msg {
+                ControlMessage::Invite {
+                    blob_ticket,
+                    file_count,
+                    total_size,
+                    sender_name,
+                } => {
+
+                    emit_paired_invite_received(
+                        &self.app_handle,
+                        &remote_id,
+                        &blob_ticket,
+                        file_count,
+                        total_size,
+                        &sender_name,
+                    );
+                }
+                ControlMessage::InviteResponse { response, .. } => {
+                    let response_str = match response {
+                        InviteResponse::Accepted => "accepted",
+                        InviteResponse::Declined => "declined",
+                    };
+
+                    emit_paired_invite_response(
+                        &self.app_handle,
+                        &self.paired_store,
+                        &remote_id,
+                        response_str,
+                    );
+                }
+                ControlMessage::Recognition { signature }
+                    if verify_challenge(&remote, &keying, &signature) => {
+
+                        let now = protocol::identity::unix_now_ms();
+                        let _ = self.paired_store.touch(&remote_id, now);
+                        set_presence(
+                            &self.presence,
+                            &self.app_handle,
+                            &self.paired_store,
+                            &remote_id,
+                            true
+                        );
+                    }
+                _other => {
+
+                }
+            }
+        }
+
+    }
+
+    fn device_still_active(&self, endpoint_id: &str) -> bool {
+        self.paired_store
+            .get(endpoint_id)
+            .ok()
+            .flatten()
+            .is_some_and(|d| d.pairing_status.is_active())
+    }
+
+    async fn set_session(&self, key: &str, conn: Connection) {
+        {
+            let mut sessions = self.sessions.write().await;
+            sessions.insert(key.to_string(), conn);
+        }
+        set_presence(
+            &self.presence,
+            &self.app_handle,
+            &self.paired_store,
+            key,
+            true,
+        );
+        let now = protocol::identity::unix_now_ms();
+        let _ = self.paired_store.touch(key, now);
+        self.notify_waiters(key).await;
+    }
+
+    async fn remove_session(&self, key: &str) {
+        let removed = self.sessions.write().await.remove(key).is_some();
+        if removed {
+            set_presence(
+                &self.presence,
+                &self.app_handle,
+                &self.paired_store,
+                key,
+                false,
+            );
+        }
+    }
+
+    async fn notify_waiters(&self, key: &str) {
+        let mut waiters = self.waiters.lock().await;
+        if let Some(waiter) = waiters.remove(key) {
+            waiter.notify.notify_waiters();
+        }
+    }
+}
+
+pub fn invite_wait_timeout() -> Duration {
+    Duration::from_secs(PAIRED_INVITE_WAIT_SECS)
+}

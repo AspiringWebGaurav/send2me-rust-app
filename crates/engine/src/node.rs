@@ -1,0 +1,1320 @@
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
+use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::Context;
+use iroh::endpoint::{
+    presets, AfterHandshakeOutcome, Connection, Endpoint, EndpointHooks, RelayMode, Side,
+};
+use iroh::protocol::{AcceptError, ProtocolHandler, Router};
+use iroh::{address_lookup::pkarr::PkarrPublisher, EndpointAddr, EndpointId, TransportAddr};
+use protocol::{
+    apply_options, export_connection_keying_material, read_message, sign_challenge,
+    verify_challenge, write_message, AddrInfoOptions, AppHandle, ControlMessage, InviteResponse,
+    PairedDevice, PairingStatus, RememberVote, CONTROL_ALPN, PRESENCE_CONNECT_TIMEOUT_SECS,
+};
+use tokio::sync::{Mutex, RwLock};
+use tokio::task::JoinHandle;
+use tracing::debug;
+
+use crate::device_identity::{
+    load_or_create_identity, DeviceIdentity, DeviceInfo, PairedDeviceInfo, PairedDeviceStore,
+};
+use crate::paired_connections::{invite_wait_timeout, PairedConnectionManager};
+use crate::pairing_util::{build_control_connect_addr, set_presence};
+use crate::runtime::NodeRuntime;
+
+#[derive(Debug)]
+struct AccessState {
+    allowed: HashSet<EndpointId>,
+    pairing_host_open: bool,
+}
+
+#[derive(Debug)]
+struct PairedOnlyHook {
+    access: Arc<RwLock<AccessState>>,
+}
+
+impl EndpointHooks for PairedOnlyHook {
+    async fn after_handshake(&self, conn: &Connection) -> AfterHandshakeOutcome {
+        if conn.side() != Side::Server {
+
+            return AfterHandshakeOutcome::accept();
+        }
+        if conn.alpn() != CONTROL_ALPN {
+
+            return AfterHandshakeOutcome::accept();
+        }
+        let remote = conn.remote_id();
+        let access = self.access.read().await;
+        let allowed = access.allowed.contains(&remote);
+        if access.pairing_host_open || allowed {
+
+            return AfterHandshakeOutcome::accept();
+        }
+
+        AfterHandshakeOutcome::Reject {
+            error_code: 403u32.into(),
+            reason: b"unauthorized control peer".to_vec(),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct ControlCtx {
+    identity: Arc<DeviceIdentity>,
+    paired_store: Arc<PairedDeviceStore>,
+    access: Arc<RwLock<AccessState>>,
+    pairing_host_persistent: Arc<AtomicBool>,
+    app_handle: AppHandle,
+    /// Updated in the background once the endpoint reaches a home relay.
+    home_relay_url: Arc<std::sync::RwLock<Option<String>>>,
+    presence: Arc<std::sync::RwLock<HashMap<String, bool>>>,
+    paired_connections: Arc<PairedConnectionManager>,
+}
+
+#[derive(Clone)]
+struct ControlProtocol {
+    ctx: ControlCtx,
+}
+
+impl std::fmt::Debug for ControlProtocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ControlProtocol").finish_non_exhaustive()
+    }
+}
+
+impl ControlProtocol {
+    async fn handle_connection(&self, conn: Connection) -> anyhow::Result<()> {
+        let remote = conn.remote_id();
+        let pairing_host_open = self.ctx.access.read().await.pairing_host_open;
+        let allowed = self.is_allowed(&remote).await;
+
+        if allowed {
+
+            return self.handle_paired_peer_connection(conn).await;
+        }
+
+        if !pairing_host_open {
+
+            return Ok(());
+        }
+
+        let keying = export_connection_keying_material(&conn).context("export keying material")?;
+
+        let (mut send, mut recv) = match conn.accept_bi().await {
+            Ok(streams) => {
+
+                streams
+            }
+            Err(err) => {
+                return Err(err).context("accept bi stream for control session");
+            }
+        };
+
+        let our_info = ControlMessage::PairingInfo {
+            endpoint_id: self.ctx.identity.endpoint_id(),
+            display_name: self.ctx.identity.display_name(),
+            device_type: self.ctx.identity.device_type(),
+            os: self.ctx.identity.os(),
+            signature: sign_challenge(&self.ctx.identity.secret_key, &keying),
+        };
+        write_message(&mut send, &our_info)
+            .await
+            .context("write local PairingInfo")?;
+
+        let mut remote_info: Option<ControlMessage> = None;
+        let mut remote_vote: Option<RememberVote> = None;
+        let mut pairing_completed = false;
+        let mut invite_received = false;
+        let session_id = uuid::Uuid::new_v4().to_string();
+
+        loop {
+            let msg = match read_message(&mut recv).await {
+                Ok(m) => m,
+                Err(_err) => {
+                    break;
+                }
+            };
+            match msg {
+                ControlMessage::PairingInfo {
+                    endpoint_id,
+                    display_name,
+                    device_type,
+                    os,
+                    signature,
+                } => {
+                    let Ok(peer_id) = EndpointId::from_str(&endpoint_id) else {
+
+                        continue;
+                    };
+                    if !verify_challenge(&peer_id, &keying, &signature) {
+
+                        continue;
+                    }
+
+                    remote_info = Some(ControlMessage::PairingInfo {
+                        endpoint_id,
+                        display_name,
+                        device_type,
+                        os,
+                        signature,
+                    });
+                }
+                ControlMessage::RememberVote { vote, .. } => {
+                    remote_vote = Some(vote);
+                }
+                ControlMessage::Invite {
+                    blob_ticket,
+                    file_count,
+                    total_size,
+                    sender_name,
+                } => {
+                    let allowed = self.is_allowed(&remote).await;
+
+
+                    if !allowed {
+
+                        continue;
+                    }
+                    invite_received = true;
+                    let payload = serde_json::json!({
+                        "blob_ticket": blob_ticket,
+                        "file_count": file_count,
+                        "total_size": total_size,
+                        "sender_name": sender_name,
+                        "remote_endpoint_id": remote.to_string(),
+                    });
+                    if let Some(handle) = &self.ctx.app_handle {
+                        let _ = handle.emit_event_with_payload(
+                            "paired-invite-received",
+                            &payload.to_string(),
+                        );
+                    }
+                }
+                ControlMessage::InviteResponse { response, .. } => {
+                    let response_str = match response {
+                        InviteResponse::Accepted => "accepted",
+                        InviteResponse::Declined => "declined",
+                    };
+                    debug!(?response, "invite response from {remote}");
+                    crate::pairing_util::emit_paired_invite_response(
+                        &self.ctx.app_handle,
+                        &self.ctx.paired_store,
+                        &remote.to_string(),
+                        response_str,
+                    );
+                }
+                ControlMessage::Recognition { signature } => {
+                    if verify_challenge(&remote, &keying, &signature) {
+
+                        let now = protocol::identity::unix_now_ms();
+                        let _ = self.ctx.paired_store.touch(&remote.to_string(), now);
+                        set_presence(
+                            &self.ctx.presence,
+                            &self.ctx.app_handle,
+                            &self.ctx.paired_store,
+                            &remote.to_string(),
+                            true
+                        );
+                    }
+                }
+                ControlMessage::Forget { signature } => {
+                    if verify_challenge(&remote, &keying, &signature) {
+
+                        if let Ok(Some(device)) = self
+                            .ctx
+                            .paired_store
+                            .mark_unpaired_remotely(&remote.to_string())
+                        {
+                            {
+                                let mut access = self.ctx.access.write().await;
+                                access.allowed.remove(&remote);
+                            }
+                            set_presence(
+                                &self.ctx.presence,
+                                &self.ctx.app_handle,
+                                &self.ctx.paired_store,
+                                &remote.to_string(),
+                                false
+                            );
+                            let payload = serde_json::json!({
+                                "endpoint_id": device.endpoint_id,
+                                "display_name": device.display_name,
+                                "reason": "remote",
+                            });
+                            if let Some(handle) = &self.ctx.app_handle {
+                                let _ = handle.emit_event_with_payload(
+                                    "device-unpaired",
+                                    &payload.to_string(),
+                                );
+                            }
+                        }
+                    }
+                }
+                ControlMessage::FolderSyncBindRequest { device_name, os } => {
+                    let payload = serde_json::json!({
+                        "remote_endpoint_id": remote.to_string(),
+                        "device_name": device_name,
+                        "os": os,
+                    });
+                    if let Some(handle) = &self.ctx.app_handle {
+                        let _ = handle.emit_event_with_payload(
+                            "folder-sync-bind-prompt",
+                            &payload.to_string(),
+                        );
+                    }
+                }
+                ControlMessage::FolderSyncBindResponse { accepted } => {
+                    let response_str = if accepted { "accepted" } else { "declined" };
+                    if let Some(handle) = &self.ctx.app_handle {
+                        let payload = serde_json::json!({
+                            "remote_endpoint_id": remote.to_string(),
+                            "status": response_str,
+                        });
+                        let _ = handle.emit_event_with_payload(
+                            "folder-sync-bind-response",
+                            &payload.to_string(),
+                        );
+                    }
+                }
+                ControlMessage::FolderSyncBindFinalize { accepted } => {
+                    let response_str = if accepted { "accepted" } else { "declined" };
+                    if let Some(handle) = &self.ctx.app_handle {
+                        let payload = serde_json::json!({
+                            "remote_endpoint_id": remote.to_string(),
+                            "status": response_str,
+                        });
+                        let _ = handle.emit_event_with_payload(
+                            "folder-sync-bind-finalize",
+                            &payload.to_string(),
+                        );
+                    }
+                }
+                ControlMessage::FolderSyncUnbind { node_id } => {
+                    tracing::info!("Received FolderSyncUnbind from node {}", node_id);
+                    if let Some(handle) = &self.ctx.app_handle {
+                        let payload = serde_json::json!({
+                            "remote_endpoint_id": remote.to_string(),
+                            "node_id": node_id,
+                        });
+                        let _ = handle.emit_event_with_payload(
+                            "folder-sync-unbound",
+                            &payload.to_string(),
+                        );
+                    }
+                }
+            }
+
+            if remote_info.is_some() && remote_vote == Some(RememberVote::Remember) {
+
+                if let Some(ControlMessage::PairingInfo {
+                    endpoint_id,
+                    display_name,
+                    device_type,
+                    os,
+                    ..
+                }) = &remote_info
+                {
+                    let now = protocol::identity::unix_now_ms();
+                    let relay_url = self
+                        .ctx
+                        .home_relay_url
+                        .read()
+                        .expect("home_relay_url")
+                        .clone();
+                    let device = PairedDevice {
+                        endpoint_id: endpoint_id.clone(),
+                        display_name: display_name.clone(),
+                        device_type: device_type.clone(),
+                        os: os.clone(),
+                        paired_at: now,
+                        last_seen_at: now,
+                        relay_url,
+                        pairing_status: PairingStatus::Active,
+                    };
+                    let _ = self.ctx.paired_store.remember(device);
+                    self.allow_peer(remote).await;
+                    self.ctx.paired_connections.refresh().await;
+
+                    if let Some(handle) = &self.ctx.app_handle {
+
+                        let _ = handle.emit_event("device-paired");
+                    }
+                }
+                pairing_completed = true;
+                break;
+            }
+        }
+
+        if remote_info.is_some() {
+
+            let vote = ControlMessage::RememberVote {
+                session_id,
+                vote: RememberVote::Remember,
+            };
+            let _ = write_message(&mut send, &vote).await;
+        }
+
+        if pairing_completed {
+            let persistent = self
+                .ctx
+                .pairing_host_persistent
+                .load(Ordering::SeqCst);
+            if !persistent {
+                self.ctx.access.write().await.pairing_host_open = false;
+
+            }
+            // Hold the session until the joiner reads our messages and disconnects.
+            drop(send);
+            drop(recv);
+
+            let _ = tokio::time::timeout(Duration::from_secs(30), conn.closed()).await;
+        } else if invite_received {
+            // Keep the session open until the sender finishes reading our side.
+            drop(send);
+            drop(recv);
+
+            let _ = tokio::time::timeout(Duration::from_secs(15), conn.closed()).await;
+        }
+
+        Ok(())
+    }
+
+    async fn handle_paired_peer_connection(&self, conn: Connection) -> anyhow::Result<()> {
+        let remote = conn.remote_id();
+        let endpoint_id = remote.to_string();
+
+        self.ctx
+            .paired_connections
+            .register_inbound(&endpoint_id, conn.clone())
+            .await;
+
+        let keying = match export_connection_keying_material(&conn) {
+            Ok(keying) => keying,
+            Err(err) => {
+                self.ctx
+                    .paired_connections
+                    .unregister_inbound(&endpoint_id)
+                    .await;
+                return Err(err).context("export keying material for paired session");
+            }
+        };
+
+        loop {
+            let (_send, mut recv) = match conn.accept_bi().await {
+                Ok(streams) => {
+
+                    streams
+                }
+                Err(_err) => {
+
+                    break;
+                }
+            };
+
+            let msg = match read_message(&mut recv).await {
+                Ok(m) => m,
+                Err(_err) => {
+
+                    continue;
+                }
+            };
+
+            let unpaired = self
+                .handle_paired_control_message(&remote, &keying, msg)
+                .await;
+            if unpaired {
+                // Close so the sender's delivery wait resolves promptly.
+                conn.close(0u32.into(), b"unpaired");
+                break;
+            }
+        }
+
+        self.ctx
+            .paired_connections
+            .unregister_inbound(&endpoint_id)
+            .await;
+
+        Ok(())
+    }
+
+    /// Returns true when the peer unpaired us and the session should close.
+    async fn handle_paired_control_message(
+        &self,
+        remote: &EndpointId,
+        keying: &[u8],
+        msg: ControlMessage,
+    ) -> bool {
+        match msg {
+            ControlMessage::Invite {
+                blob_ticket,
+                file_count,
+                total_size,
+                sender_name,
+            } => {
+
+                crate::pairing_util::emit_paired_invite_received(
+                    &self.ctx.app_handle,
+                    &remote.to_string(),
+                    &blob_ticket,
+                    file_count,
+                    total_size,
+                    &sender_name,
+                );
+            }
+            ControlMessage::InviteResponse { response, .. } => {
+                let response_str = match response {
+                    InviteResponse::Accepted => "accepted",
+                    InviteResponse::Declined => "declined",
+                };
+
+                crate::pairing_util::emit_paired_invite_response(
+                    &self.ctx.app_handle,
+                    &self.ctx.paired_store,
+                    &remote.to_string(),
+                    response_str,
+                );
+            }
+            ControlMessage::Recognition { signature } => {
+
+                if verify_challenge(remote, keying, &signature) {
+
+                    let now = protocol::identity::unix_now_ms();
+                    let _ = self
+                        .ctx
+                        .paired_store
+                        .touch(&remote.to_string(), now);
+                    set_presence(
+                        &self.ctx.presence,
+                        &self.ctx.app_handle,
+                        &self.ctx.paired_store,
+                        &remote.to_string(),
+                        true
+                    );
+                }
+            }
+            ControlMessage::Forget { signature }
+                if verify_challenge(remote, keying, &signature) => {
+
+                    let marked = self
+                        .ctx
+                        .paired_store
+                        .mark_unpaired_remotely(&remote.to_string());
+                    if let Ok(Some(device)) = marked {
+                        {
+                            let mut access = self.ctx.access.write().await;
+                            access.allowed.remove(remote);
+                        }
+                        set_presence(
+                            &self.ctx.presence,
+                            &self.ctx.app_handle,
+                            &self.ctx.paired_store,
+                            &remote.to_string(),
+                            false
+                        );
+                        self.ctx.paired_connections.forget(&remote.to_string()).await;
+                        let payload = serde_json::json!({
+                            "endpoint_id": device.endpoint_id,
+                            "display_name": device.display_name,
+                            "reason": "remote",
+                        });
+                        if let Some(handle) = &self.ctx.app_handle {
+
+                            let _ = handle.emit_event_with_payload(
+                                "device-unpaired",
+                                &payload.to_string(),
+                            );
+                        }
+                    }
+                    return true;
+                }
+            ControlMessage::FolderSyncBindRequest { device_name, os } => {
+                let payload = serde_json::json!({
+                    "remote_endpoint_id": remote.to_string(),
+                    "device_name": device_name,
+                    "os": os,
+                });
+                if let Some(handle) = &self.ctx.app_handle {
+                    let _ = handle.emit_event_with_payload(
+                        "folder-sync-bind-prompt",
+                        &payload.to_string(),
+                    );
+                }
+            }
+            ControlMessage::FolderSyncBindResponse { accepted } => {
+                let response_str = if accepted { "accepted" } else { "declined" };
+                if let Some(handle) = &self.ctx.app_handle {
+                    let payload = serde_json::json!({
+                        "remote_endpoint_id": remote.to_string(),
+                        "status": response_str,
+                    });
+                    let _ = handle.emit_event_with_payload(
+                        "folder-sync-bind-response",
+                        &payload.to_string(),
+                    );
+                }
+            }
+            ControlMessage::FolderSyncBindFinalize { accepted } => {
+                let response_str = if accepted { "accepted" } else { "declined" };
+                if let Some(handle) = &self.ctx.app_handle {
+                    let payload = serde_json::json!({
+                        "remote_endpoint_id": remote.to_string(),
+                        "status": response_str,
+                    });
+                    let _ = handle.emit_event_with_payload(
+                        "folder-sync-bind-finalize",
+                        &payload.to_string(),
+                    );
+                }
+            }
+            _other => {
+
+            }
+        }
+        false
+    }
+
+    async fn is_allowed(&self, remote: &EndpointId) -> bool {
+        self.ctx.access.read().await.allowed.contains(remote)
+    }
+
+    async fn allow_peer(&self, remote: EndpointId) {
+        let mut access = self.ctx.access.write().await;
+        access.allowed.insert(remote);
+    }
+}
+
+impl ProtocolHandler for ControlProtocol {
+    async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
+        let this = self.clone();
+
+        tokio::spawn(async move {
+            let _ = this.handle_connection(connection).await;
+        });
+
+        Ok(())
+    }
+}
+
+pub struct NodeService {
+    runtime: Arc<Mutex<NodeRuntime>>,
+    identity: Arc<DeviceIdentity>,
+    paired_store: Arc<PairedDeviceStore>,
+    access: Arc<RwLock<AccessState>>,
+    pairing_host_open: Arc<AtomicBool>,
+    pairing_host_persistent: Arc<AtomicBool>,
+    /// True after the endpoint has reached its home relay (or relay is disabled).
+    network_ready: Arc<AtomicBool>,
+    pairing_expire_task: Mutex<Option<JoinHandle<()>>>,
+    paired_connections: Arc<PairedConnectionManager>,
+    connections_supervisor: Mutex<Option<JoinHandle<()>>>,
+    presence: Arc<std::sync::RwLock<HashMap<String, bool>>>,
+    app_handle: AppHandle,
+    relay_mode: Mutex<RelayMode>,
+}
+
+impl NodeService {
+    pub async fn start(
+        data_dir: &Path,
+        relay_mode: RelayMode,
+        app_handle: AppHandle,
+    ) -> anyhow::Result<Self> {
+
+        let identity = Arc::new(load_or_create_identity(data_dir)?);
+        let paired_store = Arc::new(PairedDeviceStore::new(data_dir));
+        let allowed = load_allowed_from_store(&paired_store)?;
+
+        if identity.identity_rotated {
+            let stale_count = paired_store
+                .mark_stale_after_local_identity_rotation()
+                .unwrap_or(0);
+
+            if stale_count > 0 {
+                if let Some(handle) = &app_handle {
+                    let payload = serde_json::json!({
+                        "previous_endpoint_id": identity.previous_endpoint_id,
+                        "current_endpoint_id": identity.endpoint_id(),
+                        "stale_device_count": stale_count,
+                    });
+
+                    let _ = handle.emit_event_with_payload(
+                        "identity-rotated",
+                        &payload.to_string(),
+                    );
+                }
+            }
+        }
+
+        let access = Arc::new(RwLock::new(AccessState {
+            allowed: allowed.clone(),
+            pairing_host_open: false,
+        }));
+        let pairing_host_open = Arc::new(AtomicBool::new(false));
+        let pairing_host_persistent = Arc::new(AtomicBool::new(false));
+        let network_ready = Arc::new(AtomicBool::new(false));
+        let presence = Arc::new(std::sync::RwLock::new(HashMap::new()));
+
+        let paired_connections = Arc::new(PairedConnectionManager::new(
+            identity.clone(),
+            paired_store.clone(),
+            presence.clone(),
+            app_handle.clone(),
+        ));
+
+        let runtime = build_runtime(
+            identity.clone(),
+            paired_store.clone(),
+            access.clone(),
+            pairing_host_persistent.clone(),
+            app_handle.clone(),
+            presence.clone(),
+            paired_connections.clone(),
+            network_ready.clone(),
+            relay_mode.clone(),
+        )
+        .await?;
+        let runtime = Arc::new(Mutex::new(runtime));
+        paired_connections.attach_runtime(runtime.clone());
+        let connections_supervisor = paired_connections.start();
+
+        Ok(Self {
+            runtime,
+            identity,
+            paired_store,
+            access,
+            pairing_host_open,
+            pairing_host_persistent,
+            network_ready,
+            pairing_expire_task: Mutex::new(None),
+            paired_connections,
+            connections_supervisor: Mutex::new(Some(connections_supervisor)),
+            presence,
+            app_handle,
+            relay_mode: Mutex::new(relay_mode),
+        })
+    }
+
+    pub async fn shutdown(&self) -> anyhow::Result<()> {
+
+        self.stop_pairing_host().await;
+        if let Some(handle) = self.connections_supervisor.lock().await.take() {
+            handle.abort();
+
+        }
+        self.paired_connections.shutdown().await;
+        let runtime = self.runtime.lock().await;
+        runtime.router.shutdown().await?;
+        runtime.endpoint.close().await;
+
+        Ok(())
+    }
+
+    pub async fn reconfigure_relay(&self, relay_mode: RelayMode) -> anyhow::Result<()> {
+        {
+            let current = self.relay_mode.lock().await;
+            if format!("{current:?}") == format!("{relay_mode:?}") {
+
+                return Ok(());
+            }
+
+        }
+
+        self.stop_pairing_host().await;
+
+        self.network_ready.store(false, Ordering::SeqCst);
+        if let Some(handle) = &self.app_handle {
+            let _ = handle.emit_event("device-node-network-warming");
+        }
+
+        let mut runtime = self.runtime.lock().await;
+        runtime.router.shutdown().await?;
+        runtime.endpoint.close().await;
+
+        let new_runtime = build_runtime(
+            self.identity.clone(),
+            self.paired_store.clone(),
+            self.access.clone(),
+            self.pairing_host_persistent.clone(),
+            self.app_handle.clone(),
+            self.presence.clone(),
+            self.paired_connections.clone(),
+            self.network_ready.clone(),
+            relay_mode.clone(),
+        )
+        .await?;
+
+        *runtime = new_runtime;
+        self.paired_connections.refresh().await;
+        *self.relay_mode.lock().await = relay_mode;
+
+        Ok(())
+    }
+
+    pub fn is_network_ready(&self) -> bool {
+        self.network_ready.load(Ordering::SeqCst)
+    }
+
+    pub fn device_info(&self) -> DeviceInfo {
+        DeviceInfo::from(self.identity.as_ref())
+    }
+
+    pub fn set_device_display_name(&self, display_name: &str) -> anyhow::Result<DeviceInfo> {
+        let info = self.identity.set_display_name(display_name)?;
+
+        Ok(info)
+    }
+
+    pub fn rename_paired(
+        &self,
+        endpoint_id: &str,
+        display_name: &str,
+    ) -> anyhow::Result<PairedDevice> {
+        let device = self.paired_store.rename(endpoint_id, display_name)?;
+
+        Ok(device)
+    }
+
+    pub fn list_paired(&self) -> anyhow::Result<Vec<PairedDeviceInfo>> {
+        let devices = self.paired_store.list()?;
+        let presence = self.presence.read().expect("presence lock");
+        let infos: Vec<PairedDeviceInfo> = devices
+            .into_iter()
+            .map(|device| {
+                let online = presence
+                    .get(&device.endpoint_id.to_lowercase())
+                    .or_else(|| presence.get(&device.endpoint_id))
+                    .copied()
+                    .unwrap_or(false);
+                PairedDeviceInfo::from_device(device, online)
+            })
+            .collect();
+
+        Ok(infos)
+    }
+
+    pub async fn forget_paired(&self, endpoint_id: &str) -> anyhow::Result<()> {
+
+        let stored_relay = self
+            .paired_store
+            .get(endpoint_id)?
+            .and_then(|d| d.relay_url);
+        if let Ok(id) = EndpointId::from_str(endpoint_id) {
+            self.access.write().await.allowed.remove(&id);
+
+        }
+        self.paired_store.forget(endpoint_id)?;
+        self.paired_connections.forget(endpoint_id).await;
+        set_presence(
+            &self.presence,
+            &self.app_handle,
+            &self.paired_store,
+            endpoint_id,
+            false
+        );
+        if let Some(handle) = &self.app_handle {
+            let payload = serde_json::json!({
+                "endpoint_id": endpoint_id,
+                "reason": "local",
+            });
+            let _ = handle.emit_event_with_payload("device-unpaired", &payload.to_string());
+        }
+
+        let runtime = self.runtime.clone();
+        let identity = self.identity.clone();
+        let endpoint_id = endpoint_id.to_string();
+        tokio::spawn(async move {
+            let _ = send_forget_to_peer(
+                &runtime,
+                &identity,
+                &endpoint_id,
+                stored_relay.as_deref(),
+            )
+            .await;
+        });
+        Ok(())
+    }
+
+    /// Immediate pairing code from local identity. Never waits on presence or
+    /// relay probes — optional custom-relay hint is best-effort via try_lock.
+    pub fn pairing_ticket(&self) -> anyhow::Result<String> {
+        let relay_url = match self.runtime.try_lock() {
+            Ok(runtime) => {
+                let mut addr = runtime.endpoint.addr();
+                apply_options(&mut addr, AddrInfoOptions::Relay);
+                let url = addr.relay_urls().next().map(|u| u.to_string());
+                url
+            }
+            Err(_) => None,
+        };
+        let ticket = protocol::PairingTicket {
+            v: 1,
+            kind: protocol::PairingTicket::KIND.to_string(),
+            endpoint_id: self.identity.endpoint_id(),
+            relay_url,
+        };
+        ticket.encode()
+    }
+
+    pub async fn start_pairing_host(&self, ttl_secs: Option<u64>) -> anyhow::Result<String> {
+
+        self.stop_pairing_host().await;
+
+        let persistent = protocol::pairing::pairing_host_is_persistent(ttl_secs);
+        self.pairing_host_persistent
+            .store(persistent, Ordering::SeqCst);
+        self.pairing_host_open.store(true, Ordering::SeqCst);
+        self.access.write().await.pairing_host_open = true;
+
+        if let Some(ttl) = ttl_secs {
+            let access = self.access.clone();
+            let flag = self.pairing_host_open.clone();
+            let persistent_flag = self.pairing_host_persistent.clone();
+            let app_handle = self.app_handle.clone();
+            let handle = tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(ttl)).await;
+                flag.store(false, Ordering::SeqCst);
+                persistent_flag.store(false, Ordering::SeqCst);
+                access.write().await.pairing_host_open = false;
+
+                if let Some(handle) = &app_handle {
+
+                    let _ = handle.emit_event("pairing-host-expired");
+                }
+            });
+            *self.pairing_expire_task.lock().await = Some(handle);
+        }
+
+        let ticket = self.pairing_ticket()?;
+
+        Ok(ticket)
+    }
+
+    pub async fn stop_pairing_host(&self) {
+        if let Some(handle) = self.pairing_expire_task.lock().await.take() {
+            handle.abort();
+
+        }
+        self.pairing_host_persistent.store(false, Ordering::SeqCst);
+        let was_open = self.pairing_host_open.swap(false, Ordering::SeqCst);
+        self.access.write().await.pairing_host_open = false;
+        let _ = was_open;
+    }
+
+    pub async fn join_pairing(&self, ticket_str: &str) -> anyhow::Result<()> {
+        let ticket = protocol::PairingTicket::decode(ticket_str)?;
+        let remote = EndpointId::from_str(&ticket.endpoint_id)?;
+
+        let host_relay_url = ticket.relay_url.clone();
+        let mut addr = EndpointAddr::from(remote);
+        if let Some(relay) = host_relay_url.as_deref() {
+            if let Ok(url) = relay.parse() {
+                addr.addrs.insert(TransportAddr::Relay(url));
+
+            }
+        }
+
+        let endpoint = {
+            let runtime = self.runtime.lock().await;
+            runtime.endpoint.clone()
+        };
+        let conn = match endpoint.connect(addr, CONTROL_ALPN).await {
+            Ok(conn) => conn,
+            Err(err) => {
+                return Err(err).context("pairing connect failed");
+            }
+        };
+
+        let keying = export_connection_keying_material(&conn)?;
+
+        let (mut send, mut recv) = conn.open_bi().await.context("open bi stream for join")?;
+
+        // Send first so the host can accept_bi and begin its side of the handshake.
+        let info = ControlMessage::PairingInfo {
+            endpoint_id: self.identity.endpoint_id(),
+            display_name: self.identity.display_name(),
+            device_type: self.identity.device_type(),
+            os: self.identity.os(),
+            signature: sign_challenge(&self.identity.secret_key, &keying),
+        };
+        write_message(&mut send, &info)
+            .await
+            .context("write local PairingInfo")?;
+
+        let vote = ControlMessage::RememberVote {
+            session_id: uuid::Uuid::new_v4().to_string(),
+            vote: RememberVote::Remember,
+        };
+        write_message(&mut send, &vote)
+            .await
+            .context("write RememberVote")?;
+
+        let host_info = match read_message(&mut recv).await {
+            Ok(msg) => msg,
+            Err(err) => {
+
+                return Err(err).context("read host PairingInfo");
+            }
+        };
+
+        let ControlMessage::PairingInfo {
+            endpoint_id,
+            display_name,
+            device_type,
+            os,
+            signature,
+        } = host_info
+        else {
+
+            anyhow::bail!("expected host PairingInfo");
+        };
+        let peer_id = EndpointId::from_str(&endpoint_id).context("invalid host endpoint id")?;
+        if !verify_challenge(&peer_id, &keying, &signature) {
+            anyhow::bail!("host PairingInfo signature invalid");
+        }
+
+        let now = protocol::identity::unix_now_ms();
+        self.paired_store.remember(PairedDevice {
+            endpoint_id: endpoint_id.clone(),
+            display_name: display_name.clone(),
+            device_type,
+            os,
+            paired_at: now,
+            last_seen_at: now,
+            relay_url: host_relay_url.clone(),
+            pairing_status: PairingStatus::Active,
+        })?;
+        self.access.write().await.allowed.insert(peer_id);
+        self.paired_connections.refresh().await;
+
+        if let Some(handle) = &self.app_handle {
+
+            let _ = handle.emit_event("device-paired");
+        }
+
+        Ok(())
+    }
+
+    pub async fn invite_paired_device(
+        &self,
+        remote_endpoint_id: &str,
+        blob_ticket: &str,
+        file_count: u32,
+        total_size: u64,
+    ) -> anyhow::Result<bool> {
+        let remote = EndpointId::from_str(remote_endpoint_id)?;
+        let access = self.access.read().await;
+        let in_allowlist = access.allowed.contains(&remote);
+        drop(access);
+
+        if !in_allowlist {
+
+            anyhow::bail!("unknown paired device");
+        }
+
+        let stored_relay = self
+            .paired_store
+            .get(remote_endpoint_id)?
+            .and_then(|d| d.relay_url);
+
+        let conn = match self
+            .paired_connections
+            .wait_for_connection(remote_endpoint_id, invite_wait_timeout())
+            .await
+        {
+            Some(conn) => {
+
+                conn
+            }
+            None => {
+                let endpoint = {
+                    let runtime = self.runtime.lock().await;
+                    runtime.endpoint.clone()
+                };
+                let addr = build_control_connect_addr(
+                    &endpoint,
+                    remote,
+                    stored_relay.as_deref(),
+                );
+
+                let connect = tokio::time::timeout(
+                    Duration::from_secs(PRESENCE_CONNECT_TIMEOUT_SECS),
+                    endpoint.connect(addr, CONTROL_ALPN),
+                )
+                .await;
+                match connect {
+                    Ok(Ok(conn)) => {
+                        let now = protocol::identity::unix_now_ms();
+                        let _ = self.paired_store.touch(remote_endpoint_id, now);
+                        set_presence(
+                            &self.presence,
+                            &self.app_handle,
+                            &self.paired_store,
+                            remote_endpoint_id,
+                            true,
+                        );
+                        conn
+                    }
+                    Ok(Err(_err)) => {
+                        return Ok(false);
+                    }
+                    Err(_) => {
+                        return Ok(false);
+                    }
+                }
+            }
+        };
+
+        let (mut send, _recv) = match conn.open_bi().await {
+            Ok(streams) => streams,
+            Err(err) => {
+                return Err(err).context("open bi stream for invite");
+            }
+        };
+
+        let invite = ControlMessage::Invite {
+            blob_ticket: blob_ticket.to_string(),
+            file_count,
+            total_size,
+            sender_name: self.identity.display_name(),
+        };
+        if let Err(err) = write_message(&mut send, &invite).await {
+
+            return Err(err).context("write Invite message");
+        }
+
+        // Hold the connection in the background so the receiver can read the
+        // invite, without blocking the caller (the UI needs a fast result).
+        drop(send);
+        tokio::spawn(async move {
+
+            let _ = tokio::time::timeout(Duration::from_secs(15), conn.closed()).await;
+        });
+
+        Ok(true)
+    }
+
+    pub async fn respond_paired_invite(
+        &self,
+        remote_endpoint_id: &str,
+        accepted: bool,
+    ) -> anyhow::Result<()> {
+        let remote = EndpointId::from_str(remote_endpoint_id)?;
+        let response = if accepted {
+            InviteResponse::Accepted
+        } else {
+            InviteResponse::Declined
+        };
+        let access = self.access.read().await;
+        let in_allowlist = access.allowed.contains(&remote);
+        drop(access);
+        if !in_allowlist {
+
+            anyhow::bail!("unknown paired device");
+        }
+
+        let stored_relay = self
+            .paired_store
+            .get(remote_endpoint_id)?
+            .and_then(|d| d.relay_url);
+
+        let conn = match self
+            .paired_connections
+            .wait_for_connection(remote_endpoint_id, invite_wait_timeout())
+            .await
+        {
+            Some(conn) => conn,
+            None => {
+                let endpoint = {
+                    let runtime = self.runtime.lock().await;
+                    runtime.endpoint.clone()
+                };
+                let addr = build_control_connect_addr(
+                    &endpoint,
+                    remote,
+                    stored_relay.as_deref(),
+                );
+                let connect = tokio::time::timeout(
+                    Duration::from_secs(PRESENCE_CONNECT_TIMEOUT_SECS),
+                    endpoint.connect(addr, CONTROL_ALPN),
+                )
+                .await;
+                match connect {
+                    Ok(Ok(conn)) => conn,
+                    Ok(Err(err)) => {
+                        return Err(err).context("invite response connect failed");
+                    }
+                    Err(_) => anyhow::bail!("invite response connect timeout"),
+                }
+            }
+        };
+
+        let (mut send, _recv) = conn
+            .open_bi()
+            .await
+            .context("open bi stream for invite response")?;
+        let message = ControlMessage::InviteResponse {
+            session_id: String::new(),
+            response,
+        };
+        write_message(&mut send, &message)
+            .await
+            .context("write InviteResponse message")?;
+        let _ = send.finish();
+
+        Ok(())
+    }
+}
+
+fn load_allowed_from_store(paired_store: &PairedDeviceStore) -> anyhow::Result<HashSet<EndpointId>> {
+    let mut allowed = HashSet::new();
+    for device in paired_store.list()? {
+        if !device.pairing_status.is_connectable() {
+
+            continue;
+        }
+        if let Ok(id) = EndpointId::from_str(&device.endpoint_id) {
+            allowed.insert(id);
+        }
+    }
+
+    Ok(allowed)
+}
+
+async fn send_forget_to_peer(
+    runtime: &Arc<Mutex<NodeRuntime>>,
+    identity: &DeviceIdentity,
+    endpoint_id: &str,
+    stored_relay: Option<&str>,
+) -> anyhow::Result<()> {
+    let remote = EndpointId::from_str(endpoint_id)?;
+
+    let endpoint = {
+        let runtime_guard = runtime.lock().await;
+        runtime_guard.endpoint.clone()
+    };
+    let addr = build_control_connect_addr(&endpoint, remote, stored_relay);
+
+    let connect = tokio::time::timeout(
+        Duration::from_secs(PRESENCE_CONNECT_TIMEOUT_SECS),
+        endpoint.connect(addr, CONTROL_ALPN),
+    )
+    .await;
+
+    let conn = match connect {
+        Ok(Ok(conn)) => {
+
+            conn
+        }
+        Ok(Err(err)) => {
+            return Err(err).context("forget connect failed");
+        }
+        Err(_) => {
+
+            anyhow::bail!("forget connect timeout");
+        }
+    };
+
+    let keying = export_connection_keying_material(&conn)?;
+    let (mut send, _recv) = conn.open_bi().await.context("forget open bi")?;
+    let forget = ControlMessage::Forget {
+        signature: sign_challenge(&identity.secret_key, &keying),
+    };
+    write_message(&mut send, &forget)
+        .await
+        .context("forget write message")?;
+    let _ = send.finish();
+    // The peer closes the connection after reading the message; the timeout
+    // is a flush fallback for older peers that keep it open.
+    let _ = tokio::time::timeout(Duration::from_secs(5), conn.closed()).await;
+
+    Ok(())
+}
+
+fn endpoint_home_relay_url(endpoint: &Endpoint) -> Option<String> {
+    let mut local_addr = endpoint.addr();
+    apply_options(&mut local_addr, AddrInfoOptions::Relay);
+    let url = local_addr.relay_urls().next().map(|u| u.to_string());
+    url
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn build_runtime(
+    identity: Arc<DeviceIdentity>,
+    paired_store: Arc<PairedDeviceStore>,
+    access: Arc<RwLock<AccessState>>,
+    pairing_host_persistent: Arc<AtomicBool>,
+    app_handle: AppHandle,
+    presence: Arc<std::sync::RwLock<HashMap<String, bool>>>,
+    paired_connections: Arc<PairedConnectionManager>,
+    network_ready: Arc<AtomicBool>,
+    relay_mode: RelayMode,
+) -> anyhow::Result<NodeRuntime> {
+
+    let hook = PairedOnlyHook {
+        access: access.clone(),
+    };
+
+    let endpoint = Endpoint::builder(presets::N0)
+        .secret_key(identity.secret_key.clone())
+        .address_lookup(PkarrPublisher::n0_dns())
+        .relay_mode(relay_mode.clone())
+        .hooks(hook)
+        .alpns(vec![CONTROL_ALPN.to_vec()])
+        .bind()
+        .await?;
+
+    // Publish the node immediately after bind so pairing UI/API are available
+    // without waiting on relay home connection (often several seconds on mobile).
+    let home_relay_url = Arc::new(std::sync::RwLock::new(endpoint_home_relay_url(&endpoint)));
+
+    let control = ControlProtocol {
+        ctx: ControlCtx {
+            identity,
+            paired_store,
+            access,
+            pairing_host_persistent,
+            app_handle: app_handle.clone(),
+            home_relay_url: home_relay_url.clone(),
+            presence,
+            paired_connections,
+        },
+    };
+
+    let router = Router::builder(endpoint.clone())
+        .accept(CONTROL_ALPN, control)
+        .spawn();
+
+    let mark_network_ready = {
+        let network_ready = network_ready.clone();
+        let home_relay_url = home_relay_url.clone();
+        let app_handle = app_handle.clone();
+        move |endpoint: &Endpoint| {
+            if let Some(url) = endpoint_home_relay_url(endpoint) {
+                if let Ok(mut guard) = home_relay_url.write() {
+                    *guard = Some(url);
+                }
+            }
+            network_ready.store(true, Ordering::SeqCst);
+            if let Some(handle) = &app_handle {
+                let _ = handle.emit_event("device-node-network-ready");
+            }
+        }
+    };
+
+    // No relay path to wait on — treat network as ready immediately.
+    if matches!(relay_mode, RelayMode::Disabled) {
+        mark_network_ready(&endpoint);
+    } else {
+        let online_endpoint = endpoint.clone();
+        tokio::spawn(async move {
+            online_endpoint.online().await;
+            mark_network_ready(&online_endpoint);
+        });
+    }
+
+    Ok(NodeRuntime { endpoint, router })
+}

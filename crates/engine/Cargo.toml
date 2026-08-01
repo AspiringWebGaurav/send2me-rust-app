@@ -1,0 +1,34 @@
+[package]
+name = "sendme-native"
+version = "0.1.0"
+edition = "2021"
+authors = ["Gaurav Patil"]
+license = "LicenseRef-Proprietary"
+publish = false
+description = "Native filesystem I/O for Send2Me (desktop/mobile)"
+rust-version = "1.91"
+
+[lib]
+name = "native"
+
+[dependencies]
+protocol = { path = "../sendme_protocol", package = "sendme-protocol" }
+anyhow = "1.0.75"
+data-encoding = "2.8.0"
+dirs = "6.0.0"
+iroh-blobs = { version = "0.103" }
+iroh = { version = "1.0.0", default-features = false, features = ["tls-aws-lc-rs", "metrics", "fast-apple-datapath", "portmapper"] }
+noq-proto = "1.1"
+n0-future = "0.3"
+num_cpus = "1.16.0"
+rand = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.108"
+tokio = { version = "1.34.0", features = ["full"] }
+tracing = "0.1.40"
+walkdir = "2.4.0"
+keyring = "3"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3.8.1"

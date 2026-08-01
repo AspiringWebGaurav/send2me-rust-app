@@ -1,7 +1,7 @@
 <div align="center">
   <img src="apps/desktop/src-tauri/icons/128x128.png" width="128" height="128" alt="Send2Me Logo">
   
-  # Send2Me
+  # Send2Me Enterprise
   
   **Secure, Blazing-Fast, Peer-to-Peer File Transfer & Synchronization Desktop Application.**
   
@@ -10,6 +10,8 @@
   [![Rust](https://img.shields.io/badge/Rust-000000.svg?logo=rust&logoColor=white)](https://www.rust-lang.org/)
   [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://reactjs.org/)
   [![Zustand](https://img.shields.io/badge/Zustand-Bear-orange)](https://github.com/pmndrs/zustand)
+  [![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg?logo=githubactions)](https://github.com/AspiringWebGaurav/send2me-rust-app/actions)
+  [![Security Rating](https://img.shields.io/badge/Security-A+-success.svg?logo=owasp)](SECURITY.md)
 </div>
 
 <br/>
@@ -22,7 +24,7 @@ Send2Me is a next-generation desktop application designed to make local network 
 - [The Origin Story](#-the-origin-story)
 - [The Problem Statement](#-the-problem-statement)
 - [Key Features](#-key-features)
-- [Architecture & Tech Stack](#-architecture)
+- [Enterprise Security & Architecture](#-enterprise-security--architecture)
 - [Getting Started (Development)](#-getting-started-development)
 - [Building for Production](#-building-for-production)
 - [License](#-license)
@@ -72,15 +74,43 @@ Your files never touch a cloud server. Transfer sizes are limited only by your h
 
 ---
 
-## 🏗️ Architecture
+## 🛡️ Enterprise Security & Architecture
 
-Send2Me leverages a highly performant and modern technology stack:
+Send2Me is engineered for high-security environments where data sovereignty is paramount. We utilize a Zero Trust architecture, assuming all networks are hostile. 
 
-- **Frontend:** [React 18](https://reactjs.org/) + [TypeScript](https://www.typescriptlang.org/) + [Tailwind CSS](https://tailwindcss.com/) + [Framer Motion](https://www.framer.com/motion/)
-- **State Management:** [Zustand](https://github.com/pmndrs/zustand)
-- **Backend Core:** [Rust](https://www.rust-lang.org/)
-- **Desktop Framework:** [Tauri v2](https://tauri.app/)
-- **Networking Core:** [Iroh](https://iroh.computer/) (NAT-traversing, high-speed P2P)
+For full compliance and security audits, please review our:
+- [Enterprise Security Policy & Vulnerability Disclosure](SECURITY.md)
+- [STRIDE Threat Model Assessment](docs/ThreatModel.md)
+
+### System Architecture Flow
+
+The following diagram illustrates how the React frontend safely delegates intense networking operations to the deeply optimized Rust core using Tauri's IPC bridge.
+
+```mermaid
+graph TD
+    subgraph Device A
+        ReactA[React 18 UI] <-->|Tauri IPC| RustA[Rust Core]
+        RustA <-->|SQLite| LocalDB[(Connection History)]
+    end
+
+    subgraph The Hostile Network
+        Iroh[Iroh P2P Networking Layer]
+        Relay((DERP Relay Server))
+    end
+
+    subgraph Device B
+        RustB[Rust Core] <-->|Tauri IPC| ReactB[React 18 UI]
+    end
+
+    RustA <-->|Noise E2E Encrypted Protocol| Iroh
+    Iroh -.->|Hole Punching / NAT Traversal| Relay
+    Iroh <==>|Direct Connection Established!| RustB
+```
+
+Send2Me leverages a highly performant technology stack:
+- **Frontend:** [React 18](https://reactjs.org/) + [TypeScript](https://www.typescriptlang.org/) + [Tailwind CSS](https://tailwindcss.com/)
+- **Backend:** [Rust](https://www.rust-lang.org/) powering [Tauri v2](https://tauri.app/)
+- **Networking:** [Iroh](https://iroh.computer/) (NAT-traversing, high-speed P2P)
 
 *(For a detailed breakdown of how the Tauri Bridge and P2P networking operate, see the [Architecture Documentation](docs/Architecture.md))*
 

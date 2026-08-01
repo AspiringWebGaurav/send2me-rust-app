@@ -96,3 +96,6 @@ temp/
 coverage/
 .nyc_output/
 *.lcov
+ 
+# TrainPlex Analyzer Files
+trainplex/

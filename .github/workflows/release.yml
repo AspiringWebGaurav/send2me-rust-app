@@ -45,6 +45,9 @@ jobs:
           cd apps/desktop
           npm install
 
+      - name: Disable code signing on CI
+        run: node -e "const fs=require('fs'); const file='apps/desktop/src-tauri/tauri.conf.json'; const obj=JSON.parse(fs.readFileSync(file)); if (obj.bundle && obj.bundle.windows && obj.bundle.windows.certificateThumbprint) { delete obj.bundle.windows.certificateThumbprint; fs.writeFileSync(file, JSON.stringify(obj, null, 2)); }"
+
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:

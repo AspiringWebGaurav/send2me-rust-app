@@ -16,7 +16,7 @@ CRCCheck force
 
 ; Keep above !include to stay ahead of any plugin command
 ; see https://github.com/tauri-apps/tauri/pull/15422#discussion_r3289239624
-!addplugindir "C:\github\send2me-rust-app\target\release\nsis\x64\Plugins\x86-unicode"
+!addplugindir ".\Plugins\x86-unicode"
 
 !include MUI2.nsh
 !include FileFunc.nsh
@@ -39,19 +39,19 @@ ${StrLoc}
 !define VERSIONWITHBUILD "0.1.0.0"
 !define HOMEPAGE "https://www.send2me.site"
 !define INSTALLMODE "currentUser"
-!define LICENSE "C:\github\send2me-rust-app\target\release\nsis\x64\license_file"
-!define INSTALLERICON "C:\github\send2me-rust-app\apps\desktop\src-tauri\icons\icon.ico"
+!define LICENSE ".\license_file"
+!define INSTALLERICON "..\..\..\..\apps\desktop\src-tauri\icons\icon.ico"
 !define SIDEBARIMAGE ""
 !define HEADERIMAGE ""
 !define UNINSTALLERICON ""
 !define UNINSTALLERHEADERIMAGE ""
 !define MAINBINARYNAME "desktop"
-!define MAINBINARYSRCPATH "C:\github\send2me-rust-app\target\release\desktop.exe"
+!define MAINBINARYSRCPATH "..\..\desktop.exe"
 !define BUNDLEID "com.send2me.app"
 !define COPYRIGHT "Copyright 2026 Gaurav"
 !define OUTFILE "nsis-output.exe"
 !define ARCH "x64"
-!define ADDITIONALPLUGINSPATH "C:\github\send2me-rust-app\target\release\nsis\x64\Plugins\x86-unicode\additional"
+!define ADDITIONALPLUGINSPATH ".\Plugins\x86-unicode\additional"
 !define ALLOWDOWNGRADES "true"
 !define DISPLAYLANGUAGESELECTOR "false"
 !define INSTALLWEBVIEW2MODE "downloadBootstrapper"
@@ -62,7 +62,7 @@ ${StrLoc}
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCTNAME}"
 !define MANUKEY "Software\${MANUFACTURER}"
 !define MANUPRODUCTKEY "${MANUKEY}\${PRODUCTNAME}"
-!define UNINSTALLERSIGNCOMMAND "$\"C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64\\signtool.exe$\" $\"sign$\" $\"/fd$\" $\"sha256$\" $\"/sha1$\" $\"60EDF11308162990F758EB35B5F96FDDD505283E$\" $\"/d$\" $\"Send2Me$\" $\"%1$\""
+!define UNINSTALLERSIGNCOMMAND ""
 !define ESTIMATEDSIZE "23858"
 !define STARTMENUFOLDER ""
 
@@ -727,7 +727,7 @@ FunctionEnd
 ;Languages
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_RESERVEFILE_LANGDLL
-  !include "C:\github\send2me-rust-app\target\release\nsis\x64\English.nsh"
+  !include ".\English.nsh"
 
 Function .onInit
   ${GetOptions} $CMDLINE "/P" $PassiveMode

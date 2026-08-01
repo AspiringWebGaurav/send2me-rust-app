@@ -1,0 +1,43 @@
+[package]
+name = "desktop"
+version = "0.1.0"
+description = "Send2Me"
+authors = ["Gaurav Patil"]
+edition = "2021"
+
+[lib]
+name = "desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+send2me_core = { workspace = true }
+network = { workspace = true }
+protocol = { workspace = true }
+transfer = { workspace = true }
+sync = { workspace = true }
+storage = { workspace = true }
+platform = { workspace = true }
+p2p_drive = { workspace = true }
+iroh = { workspace = true }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = "0.4.45"
+dirs = "6.0.0"
+sysinfo = "0.33.0"
+blake3 = "1.5.0"
+anyhow = { workspace = true }
+tracing-subscriber = { workspace = true }
+winreg = "0.56.0"
+
+[dev-dependencies]
+tempfile = "3"

@@ -16,7 +16,7 @@ CRCCheck force
 
 ; Keep above !include to stay ahead of any plugin command
 ; see https://github.com/tauri-apps/tauri/pull/15422#discussion_r3289239624
-!addplugindir "C:\github\send2me\target\release\nsis\x64\Plugins\x86-unicode"
+!addplugindir "C:\github\send2me-rust-app\target\release\nsis\x64\Plugins\x86-unicode"
 
 !include MUI2.nsh
 !include FileFunc.nsh
@@ -39,19 +39,19 @@ ${StrLoc}
 !define VERSIONWITHBUILD "0.1.0.0"
 !define HOMEPAGE "https://www.send2me.site"
 !define INSTALLMODE "currentUser"
-!define LICENSE "C:\github\send2me\target\release\nsis\x64\license_file"
-!define INSTALLERICON "C:\github\send2me\apps\desktop\src-tauri\icons\icon.ico"
+!define LICENSE "C:\github\send2me-rust-app\target\release\nsis\x64\license_file"
+!define INSTALLERICON "C:\github\send2me-rust-app\apps\desktop\src-tauri\icons\icon.ico"
 !define SIDEBARIMAGE ""
 !define HEADERIMAGE ""
 !define UNINSTALLERICON ""
 !define UNINSTALLERHEADERIMAGE ""
 !define MAINBINARYNAME "desktop"
-!define MAINBINARYSRCPATH "C:\github\send2me\target\release\desktop.exe"
+!define MAINBINARYSRCPATH "C:\github\send2me-rust-app\target\release\desktop.exe"
 !define BUNDLEID "com.send2me.app"
 !define COPYRIGHT "Copyright 2026 Gaurav"
 !define OUTFILE "nsis-output.exe"
 !define ARCH "x64"
-!define ADDITIONALPLUGINSPATH "C:\github\send2me\target\release\nsis\x64\Plugins\x86-unicode\additional"
+!define ADDITIONALPLUGINSPATH "C:\github\send2me-rust-app\target\release\nsis\x64\Plugins\x86-unicode\additional"
 !define ALLOWDOWNGRADES "true"
 !define DISPLAYLANGUAGESELECTOR "false"
 !define INSTALLWEBVIEW2MODE "downloadBootstrapper"
@@ -535,6 +535,50 @@ Function PageLeaveReinstall
   reinst_done:
 FunctionEnd
 
+; 4.5 Firewall Configuration Page
+Var FirewallDialog
+Var FirewallCheckbox
+Var FirewallAllowed
+
+Page custom FirewallPageShow FirewallPageLeave
+
+Function FirewallPageShow
+  ${If} $PassiveMode = 1
+    StrCpy $FirewallAllowed "1"
+    Abort
+  ${EndIf}
+  
+  !insertmacro MUI_HEADER_TEXT "Firewall Configuration" "Add a Send2Me firewall exception"
+  
+  nsDialogs::Create 1018
+  Pop $FirewallDialog
+  ${If} $FirewallDialog == error
+    Abort
+  ${EndIf}
+  ${IfThen} $(^RTL) = 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
+  
+  ${NSD_CreateLabel} 0 0 100% 32u "An exception must be added to the firewall to enable users to connect. Send2Me can attempt to add this exception, or you can configure the firewall yourself."
+  Pop $0
+  
+  ${NSD_CreateCheckbox} 0 40u 100% 12u "Add an exception to the Windows firewall for Send2Me"
+  Pop $FirewallCheckbox
+  ${NSD_SetState} $FirewallCheckbox ${BST_CHECKED}
+  
+  ${NSD_CreateLabel} 0 65u 100% 40u "IMPORTANT: If you are using a third-party firewall software or using an anti virus with firewall settings, you may need to manually allow 'Send2Me.exe' in the firewall settings in order to connect properly."
+  Pop $0
+  
+  nsDialogs::Show
+FunctionEnd
+
+Function FirewallPageLeave
+  ${NSD_GetState} $FirewallCheckbox $0
+  ${If} $0 == ${BST_CHECKED}
+    StrCpy $FirewallAllowed "1"
+  ${Else}
+    StrCpy $FirewallAllowed "0"
+  ${EndIf}
+FunctionEnd
+
 ; 5. Choose install directory page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_DIRECTORY
@@ -683,7 +727,7 @@ FunctionEnd
 ;Languages
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_RESERVEFILE_LANGDLL
-  !include "C:\github\send2me\target\release\nsis\x64\English.nsh"
+  !include "C:\github\send2me-rust-app\target\release\nsis\x64\English.nsh"
 
 Function .onInit
   ${GetOptions} $CMDLINE "/P" $PassiveMode
@@ -963,6 +1007,13 @@ Section Install
     !insertmacro NSIS_HOOK_POSTINSTALL
   !endif
 
+  ; Add Firewall Exception if permitted
+  ${If} $FirewallAllowed == "1"
+    DetailPrint "Adding Firewall Exception..."
+    nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Send2Me (In)" dir=in action=allow program="$INSTDIR\${MAINBINARYNAME}.exe" enable=yes profile=any'
+    nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Send2Me (Out)" dir=out action=allow program="$INSTDIR\${MAINBINARYNAME}.exe" enable=yes profile=any'
+  ${EndIf}
+
   ; Auto close this page for passive mode
   ${If} $PassiveMode = 1
     SetAutoClose true
@@ -1028,6 +1079,11 @@ Section Uninstall
 
   ; Delete uninstaller
   Delete "$INSTDIR\uninstall.exe"
+
+  ; Clean up Firewall rules
+  DetailPrint "Removing Firewall Exception..."
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Send2Me (In)"'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Send2Me (Out)"'
 
   RMDir "$INSTDIR"
 

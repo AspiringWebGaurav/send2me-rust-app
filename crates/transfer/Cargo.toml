@@ -1,0 +1,17 @@
+[package]
+name = "transfer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+network = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+iroh = { workspace = true }
+anyhow = { workspace = true }
+uuid = { version = "1.7", features = ["v4"] }
+chrono = "0.4.38"
+dirs = "5.0"
+blake3 = "1.5.0"

@@ -146,11 +146,20 @@ export const DriveRoom = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
+  const stagger = {
+    initial: { opacity: 0, y: 16 },
+    animate: (i: number) => ({ opacity: 1, y: 0, transition: { duration: 0.32, delay: i * 0.08, ease: EASE } }),
+  };
+
   return (
-    <div className="flex flex-col lg:flex-row h-full w-full gap-6 p-4 lg:p-8 bg-background/50 overflow-y-auto min-h-0">
+    <div className="flex flex-col lg:flex-row h-full w-full gap-4 md:gap-6 p-4 md:p-6 lg:p-8 bg-background/50 overflow-y-auto min-h-0">
       
       {/* Left Column: Room & Files Area */}
-      <div className="flex-1 flex flex-col gap-6 max-w-xl">
+      <motion.div 
+        custom={0} initial="initial" animate="animate" variants={stagger}
+        className="flex-1 flex flex-col gap-6 max-w-full lg:max-w-xl"
+      >
         <Card className="flex flex-col relative overflow-hidden rounded-3xl border-primary/20 shadow-xl bg-card">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-primary/50" />
           <div className="flex flex-col p-6 border-b border-border/40 bg-secondary/20 relative">
@@ -228,10 +237,13 @@ export const DriveRoom = () => {
             )}
           </div>
         </Card>
-      </div>
+      </motion.div>
 
       {/* Right Column: Guests & Queue */}
-      <div className="flex-[1.5] flex flex-col gap-6">
+      <motion.div 
+        custom={1} initial="initial" animate="animate" variants={stagger}
+        className="flex-[1.5] flex flex-col gap-6"
+      >
         
         {/* Active Guests */}
         <Card className="flex flex-col rounded-3xl overflow-hidden border-primary/10 shadow-lg min-h-[180px]">
@@ -377,7 +389,7 @@ export const DriveRoom = () => {
           )}
         </AnimatePresence>
         
-      </div>
+      </motion.div>
     </div>
   );
 };

@@ -163,8 +163,14 @@ export const DriveGuest = () => {
     );
   }
 
+  const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
+  const stagger = {
+    initial: { opacity: 0, y: 16 },
+    animate: (i: number) => ({ opacity: 1, y: 0, transition: { duration: 0.32, delay: i * 0.08, ease: EASE } }),
+  };
+
   return (
-    <div className="flex flex-col h-full w-full bg-background/50">
+    <div className="flex flex-col h-full w-full bg-background/50 overflow-hidden">
       <div className="flex items-center justify-between p-4 border-b border-border/40 bg-secondary/20">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => setIsConnected(false)}>
@@ -172,15 +178,19 @@ export const DriveGuest = () => {
           </Button>
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-success shadow-[0_0_8px_hsl(var(--success)/0.6)]" />
-            <h2 className="font-semibold">Connected to Host (Code: {connectCode})</h2>
+            <h2 className="font-semibold text-sm md:text-base">Connected to Host (Code: {connectCode})</h2>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4 lg:p-6 overflow-y-auto min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 p-4 md:p-6 overflow-y-auto min-h-0">
         
         {/* Remote File Browser */}
-        <Card className="flex-[2] flex flex-col rounded-2xl overflow-hidden border-primary/20">
+        <motion.div 
+          custom={0} initial="initial" animate="animate" variants={stagger}
+          className="flex-[2] flex flex-col min-h-[300px]"
+        >
+          <Card className="flex-1 flex flex-col rounded-2xl overflow-hidden border-primary/20 shadow-xl bg-card">
           <div className="p-4 border-b border-border/40 bg-secondary/30 flex justify-between items-center">
             <h3 className="font-bold text-sm">Remote Files</h3>
           </div>
@@ -223,12 +233,16 @@ export const DriveGuest = () => {
               })
             )}
           </div>
-        </Card>
+          </Card>
+        </motion.div>
 
-        <div className="flex-1 flex flex-col gap-4">
+        <motion.div 
+          custom={1} initial="initial" animate="animate" variants={stagger}
+          className="flex-1 flex flex-col gap-4"
+        >
           {/* Upload Dropzone */}
           <Card 
-            className="flex flex-col rounded-2xl overflow-hidden border-dashed border-2 border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer group"
+            className="flex flex-col rounded-2xl overflow-hidden border-dashed border-2 border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer group shadow-xl"
           onClick={handleRequestUpload}
         >
           <div className="flex-1 flex flex-col items-center justify-center text-center p-6 relative">
@@ -306,7 +320,7 @@ export const DriveGuest = () => {
             </motion.div>
           )}
         </AnimatePresence>
-        </div>
+        </motion.div>
       </div>
     </div>
   );

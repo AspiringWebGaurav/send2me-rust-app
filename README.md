@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/tauri-apps/tauri/HEAD/app-icon.png" width="128" height="128" alt="Send2Me Logo">
+  <img src="apps/desktop/src-tauri/icons/128x128.png" width="128" height="128" alt="Send2Me Logo">
   
   # Send2Me
   

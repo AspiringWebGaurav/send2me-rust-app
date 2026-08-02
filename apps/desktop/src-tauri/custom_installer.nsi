@@ -199,19 +199,15 @@ Function ConsentPageShow
   ${EndIf}
   ${IfThen} $(^RTL) = 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
 
-  ; Create clean, readable typography with proper dialog unit metrics
+  ; Create clean, readable typography
   CreateFont $2 "Segoe UI" 9
   CreateFont $3 "Segoe UI" 9 600
 
-  ${NSD_CreateLabel} 0 0 100% 16u "Send2Me is a peer-to-peer file transfer tool. Please acknowledge before setup:"
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $3 1
-
-  ${NSD_CreateLabel} 0 18u 100% 50u "• Direct P2P: Files are sent directly device-to-device with zero cloud storage.$\r$\n• Sole Responsibility: You assume full responsibility for all files you choose to transfer.$\r$\n• Local Privacy: Transfer history and pairing codes remain strictly on this device."
+  ${NSD_CreateLabel} 0 0 100% 64u "Send2Me is a peer-to-peer file transfer tool. Please acknowledge before setup:$\r$\n$\r$\n• Direct P2P: Files are sent directly device-to-device with zero cloud storage.$\r$\n• Sole Responsibility: You assume full responsibility for transferred files.$\r$\n• Local Privacy: Pairing history and codes stay strictly on your device."
   Pop $0
   SendMessage $0 ${WM_SETFONT} $2 1
 
-  ${NSD_CreateCheckbox} 0 72u 100% 22u "I understand how Send2Me works, accept terms, and assume liability. (Required)"
+  ${NSD_CreateCheckbox} 0 68u 100% 20u "I understand and accept the transfer terms and liability. (Required)"
   Pop $ConsentCheckboxTerms
   SendMessage $ConsentCheckboxTerms ${WM_SETFONT} $3 1
   ${NSD_SetState} $ConsentCheckboxTerms ${BST_UNCHECKED}
@@ -221,7 +217,7 @@ Function ConsentPageShow
   GetDlgItem $0 $HWNDPARENT 1
   EnableWindow $0 0
 
-  ${NSD_CreateCheckbox} 0 98u 100% 20u "Allow anonymous crash reports to help Gaurav Patil improve Send2Me. (Optional)"
+  ${NSD_CreateCheckbox} 0 92u 100% 20u "Allow anonymous crash reports to help Gaurav Patil improve Send2Me. (Optional)"
   Pop $ConsentCheckboxTelemetry
   SendMessage $ConsentCheckboxTelemetry ${WM_SETFONT} $2 1
   ${NSD_SetState} $ConsentCheckboxTelemetry ${BST_UNCHECKED}

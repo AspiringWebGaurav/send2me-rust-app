@@ -8,55 +8,186 @@ on:
       - 'docs/**'
       - '*.md'
       - '.gitignore'
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: 'Create as draft release'
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
 
 jobs:
   release:
-    permissions:
-      contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [windows-latest]
-
-    runs-on: ${{ matrix.platform }}
+    name: "Build & Publish Windows Release"
+    runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Setup Node.js (v22 LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
-      - name: Install Rust toolchain
+      - name: Install Rust toolchain (stable)
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache npm dependencies
-        uses: actions/cache@v3
         with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./ -> target"
 
       - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm install
+
+      - name: Extract version and sanitize config
+        id: prep
+        shell: pwsh
         run: |
-          npm install
-          cd apps/desktop
-          npm install
+          $confPath = "apps/desktop/src-tauri/tauri.conf.json"
+          $conf = Get-Content $confPath -Raw | ConvertFrom-Json
+          $version = $conf.version
+          Write-Host "Detected Send2Me Version: $version"
+          "VERSION=$version" >> $env:GITHUB_OUTPUT
+          "TAG_NAME=v$version" >> $env:GITHUB_OUTPUT
 
-      - name: Disable code signing on CI
-        run: node -e "const fs=require('fs'); const file='apps/desktop/src-tauri/tauri.conf.json'; const obj=JSON.parse(fs.readFileSync(file)); if (obj.bundle && obj.bundle.windows && obj.bundle.windows.certificateThumbprint) { delete obj.bundle.windows.certificateThumbprint; fs.writeFileSync(file, JSON.stringify(obj, null, 2)); }"
+          # Remove local code signing thumbprint so CI build succeeds without local certificate
+          if ($conf.bundle -and $conf.bundle.windows -and $conf.bundle.windows.certificateThumbprint) {
+              $conf.bundle.windows.PSObject.Properties.Remove('certificateThumbprint')
+              $conf | ConvertTo-Json -Depth 10 | Set-Content $confPath
+              Write-Host "Removed local certificateThumbprint for CI build."
+          }
 
-      - name: Build the app
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri Desktop Application
+        working-directory: apps/desktop
+        run: npm run tauri build -- --target x86_64-pc-windows-msvc
+
+      - name: Stage Commercial Release Assets
+        id: stage
+        shell: pwsh
+        run: |
+          $version = "${{ steps.prep.outputs.VERSION }}"
+          $releaseDir = "release_assets"
+          New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+
+          # Locate and stage NSIS Setup Installer
+          $nsisSrc = Get-ChildItem -Path "target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $nsisSrc) {
+              $nsisSrc = Get-ChildItem -Path "target/release/bundle/nsis/*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if ($nsisSrc) {
+              $nsisDest = Join-Path $releaseDir "Send2Me_${version}_x64-setup.exe"
+              Copy-Item -Path $nsisSrc.FullName -Destination $nsisDest -Force
+              Write-Host "Staged NSIS Setup: $nsisDest ($( (Get-Item $nsisDest).Length ) bytes)"
+          } else {
+              Write-Error "CRITICAL: NSIS setup installer not found!"
+              exit 1
+          }
+
+          # Locate and stage MSI Installer (if generated)
+          $msiSrc = Get-ChildItem -Path "target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $msiSrc) {
+              $msiSrc = Get-ChildItem -Path "target/release/bundle/msi/*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if ($msiSrc) {
+              $msiDest = Join-Path $releaseDir "Send2Me_${version}_x64.msi"
+              Copy-Item -Path $msiSrc.FullName -Destination $msiDest -Force
+              Write-Host "Staged MSI Package: $msiDest ($( (Get-Item $msiDest).Length ) bytes)"
+          }
+
+          # Locate and stage Standalone Portable Binary
+          $binSrc = "target/x86_64-pc-windows-msvc/release/desktop.exe"
+          if (-not (Test-Path $binSrc)) {
+              $binSrc = "target/release/desktop.exe"
+          }
+          if (Test-Path $binSrc) {
+              $portableDest = Join-Path $releaseDir "Send2Me_${version}_x64-portable.exe"
+              Copy-Item -Path $binSrc -Destination $portableDest -Force
+              Write-Host "Staged Portable EXE: $portableDest ($( (Get-Item $portableDest).Length ) bytes)"
+
+              # Create Portable ZIP Package
+              $zipDest = Join-Path $releaseDir "Send2Me_${version}_windows-x64.zip"
+              Compress-Archive -Path $portableDest -DestinationPath $zipDest -Force
+              Write-Host "Staged Portable ZIP: $zipDest ($( (Get-Item $zipDest).Length ) bytes)"
+          }
+
+          # Generate Cryptographic SHA256 Checksums for Enterprise Verification
+          $checksumFile = Join-Path $releaseDir "SHA256SUMS.txt"
+          $files = Get-ChildItem -Path $releaseDir -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" }
+          $checksums = foreach ($file in $files) {
+              $hash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLower()
+              "$hash  $($file.Name)"
+          }
+          $checksums | Set-Content -Path $checksumFile
+          Write-Host "=== Generated SHA256SUMS.txt ==="
+          Get-Content $checksumFile
+
+      - name: Validate Release Artifact Integrity
+        shell: pwsh
+        run: |
+          $assets = Get-ChildItem -Path "release_assets" -File
+          Write-Host "Total staged assets: $($assets.Count)"
+          if ($assets.Count -eq 0) {
+              Write-Error "Validation Failure: No release assets were staged!"
+              exit 1
+          }
+          foreach ($asset in $assets) {
+              if ($asset.Length -eq 0) {
+                  Write-Error "Validation Failure: Asset $($asset.Name) has 0 bytes!"
+                  exit 1
+              }
+              Write-Host "Verified: $($asset.Name) [$($asset.Length) bytes]"
+          }
+
+      - name: Upload Workflow Run Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Send2Me-Windows-x64-Release-${{ steps.prep.outputs.VERSION }}
+          path: release_assets/*
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish Public GitHub Release
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: apps/desktop
-          tagName: v__VERSION__
-          releaseName: "Send2Me v__VERSION__"
-          releaseBody: "Automated Release from GitHub Actions."
-          releaseDraft: true
-          prerelease: false
-          args: --target x86_64-pc-windows-msvc
+          tag_name: ${{ steps.prep.outputs.TAG_NAME }}
+          name: "Send2Me v${{ steps.prep.outputs.VERSION }}"
+          draft: ${{ github.event.inputs.draft || false }}
+          prerelease: ${{ github.event.inputs.prerelease || false }}
+          generate_release_notes: true
+          files: release_assets/*
+          body: |
+            ## Send2Me Desktop v${{ steps.prep.outputs.VERSION }} (Windows x64)
+
+            ### 🚀 Official Downloads
+            | Package | Type | Description |
+            | :--- | :--- | :--- |
+            | **`Send2Me_${{ steps.prep.outputs.VERSION }}_x64-setup.exe`** | **Setup Installer (Recommended)** | Standard Windows installer with desktop shortcut and automated firewall setup. |
+            | **`Send2Me_${{ steps.prep.outputs.VERSION }}_x64.msi`** | **Enterprise MSI** | Windows Installer package designed for enterprise deployment and group policies. |
+            | **`Send2Me_${{ steps.prep.outputs.VERSION }}_x64-portable.exe`** | **Portable Executable** | Standalone zero-install application binary. |
+            | **`Send2Me_${{ steps.prep.outputs.VERSION }}_windows-x64.zip`** | **Portable ZIP Archive** | Compressed archive containing the standalone executable. |
+            | **`SHA256SUMS.txt`** | **Integrity Checksums** | SHA-256 hashes for cryptographic download verification. |
+
+            ---
+
+            ### 🔒 Integrity & Security Verification
+            To verify the integrity of your download in Windows PowerShell:
+            ```powershell
+            Get-FileHash -Algorithm SHA256 .\Send2Me_${{ steps.prep.outputs.VERSION }}_x64-setup.exe
+            ```
+            Compare the resulting hash against the values in `SHA256SUMS.txt`.

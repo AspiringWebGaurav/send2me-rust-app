@@ -163,42 +163,8 @@ jobs:
         working-directory: apps/desktop
         run: |
           npm run tauri android init -- --ci --skip-targets-install
-
-          # Make gradlew executable
           chmod +x src-tauri/gen/android/gradlew 2>/dev/null || true
-
-          # Configure AndroidManifest with Scoped Storage and Cleartext / Multicast WiFi settings for Galaxy S9+ (Android 10)
-          node -e '
-          const fs = require("fs");
-          const manifestPath = "src-tauri/gen/android/app/src/main/AndroidManifest.xml";
-          if (fs.existsSync(manifestPath)) {
-            let xml = fs.readFileSync(manifestPath, "utf8");
-            const permissions = `
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />`;
-            if (!xml.includes("CHANGE_WIFI_MULTICAST_STATE")) {
-              xml = xml.replace("<application", permissions + "\n    <application");
-            }
-            if (!xml.includes("requestLegacyExternalStorage")) {
-              xml = xml.replace("<application", "<application android:requestLegacyExternalStorage=\"true\" android:usesCleartextTraffic=\"true\"");
-            }
-            fs.writeFileSync(manifestPath, xml);
-            console.log("Patched AndroidManifest.xml for Android 10+");
-          }
-
-          const gradlePath = "src-tauri/gen/android/app/build.gradle.kts";
-          if (fs.existsSync(gradlePath)) {
-            let gradle = fs.readFileSync(gradlePath, "utf8");
-            gradle = gradle.replace(/minSdk\s*=\s*[0-9]+/g, "minSdk = 24");
-            fs.writeFileSync(gradlePath, gradle);
-            console.log("Set minSdkVersion = 24 in build.gradle.kts");
-          }
-          '
+          node scripts/patch-android.cjs
 
       - name: Build Android Release APKs
         working-directory: apps/desktop

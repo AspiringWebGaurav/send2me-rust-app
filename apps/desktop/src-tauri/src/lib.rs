@@ -50,6 +50,7 @@ fn get_app_info(app: AppHandle) -> AppInfo {
     }
 }
 
+#[cfg(desktop)]
 pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
     use tauri::tray::{TrayIconBuilder, TrayIconEvent};
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
@@ -114,6 +115,11 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
         .build(app)
         .map_err(|e| e.to_string())?;
 
+    Ok(())
+}
+
+#[cfg(not(desktop))]
+pub fn setup_tray(_app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
@@ -485,10 +491,13 @@ pub fn run() {
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                // If the background daemon tray exists, hide window instead of closing
-                if window.app_handle().tray_by_id("main-tray").is_some() {
-                    let _ = window.hide();
-                    api.prevent_close();
+                #[cfg(desktop)]
+                {
+                    // If the background daemon tray exists, hide window instead of closing
+                    if window.app_handle().tray_by_id("main-tray").is_some() {
+                        let _ = window.hide();
+                        api.prevent_close();
+                    }
                 }
             }
         })

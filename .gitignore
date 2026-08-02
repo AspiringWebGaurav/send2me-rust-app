@@ -1,21 +1,65 @@
-# ─── Dependencies ───────────────────────────────────────────────
+# =============================================================================
+# Send2Me .gitignore
+# Prevents accidental commits of temporary, build, runtime, and secret files
+# =============================================================================
+
+# ─── Dependencies & Package Managers ─────────────────────────────────────────
 node_modules/
 .pnpm-store/
 .yarn/
 .pnp.*
 
-# ─── Build outputs ──────────────────────────────────────────────
+# ─── Rust & Tauri Build Outputs ──────────────────────────────────────────────
 target/
+**/target/
 dist/
+dist-ssr/
 build/
 out/
-
-# Tauri generated code and bundles
 apps/desktop/src-tauri/gen/
-apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/WixTools/
+nsis-output.exe
+**/*.rs.bk
+*.pdb
 
-# ─── TypeScript / Vite / bundler caches ─────────────────────────
+# ─── Android / Mobile / Gradle Outputs ───────────────────────────────────────
+.gradle/
+local.properties
+*.apk
+*.aab
+gen/android/
+gen/apple/
+
+# ─── Local Release Staging & Artifacts ───────────────────────────────────────
+windows_assets/
+android_assets/
+macos_assets/
+linux_assets/
+all_release_assets/
+staged_downloads/
+SHA256SUMS.txt
+*.exe
+*.msi
+*.dmg
+*.AppImage
+*.deb
+*.tar.gz
+*.zip
+
+# ─── Runtime Databases & Local Data (SQLite / Manifests) ────────────────────
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+manifest.db*
+drive.db*
+settings.json
+*.send2me.tmp
+*.unconfirmed.*
+
+# ─── TypeScript / Vite / Bundler Caches ──────────────────────────────────────
 *.tsbuildinfo
 .turbo/
 .vercel/
@@ -26,7 +70,7 @@ apps/desktop/src-tauri/WixTools/
 .svelte-kit/
 .vite/
 
-# ─── Environment & secrets ──────────────────────────────────────
+# ─── Environment, Secrets & Certificates ─────────────────────────────────────
 .env
 .env.local
 .env.*.local
@@ -36,27 +80,34 @@ apps/desktop/src-tauri/WixTools/
 *.key
 *.p12
 *.pfx
+*.cer
+*.crt
+*.jks
+*.keystore
 secrets.*
+signing.key
 
-# ─── Logs ───────────────────────────────────────────────────────
+# ─── Logs & Diagnostics ──────────────────────────────────────────────────────
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+diagnose-*.sh
 
-# ─── Rust ───────────────────────────────────────────────────────
-**/*.rs.bk
-*.pdb
-
-# ─── Editor / IDE ───────────────────────────────────────────────
+# ─── Editor / IDE / AI Assistants ────────────────────────────────────────────
 .idea/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
 !.vscode/tasks.json
 !.vscode/launch.json
+.cursor/
+.claude/
+.gemini/
+.aider*
 *.swp
 *.swo
 *.suo
@@ -65,13 +116,7 @@ lerna-debug.log*
 *.sln
 *.sw?
 
-# ─── Agent / assistant state ────────────────────────────────────
-.claude/settings.local.json
-.claude/local/
-.aider*
-.cursor/
-
-# ─── OS-generated files ─────────────────────────────────────────
+# ─── OS-Generated Files ──────────────────────────────────────────────────────
 .DS_Store
 .DS_Store?
 ._*
@@ -82,20 +127,15 @@ Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
-# ─── Project-specific ───────────────────────────────────────────
-reference-read-only/
-refrenve-only-redme/
-.local/
-diagnose-*.sh
+# ─── Temporary Files & Scratch ───────────────────────────────────────────────
 *.tmp
 *.temp
 tmp/
 temp/
-
-# ─── Coverage / test output ─────────────────────────────────────
+.local/
+reference-read-only/
+refrenve-only-redme/
+trainplex/
 coverage/
 .nyc_output/
 *.lcov
- 
-# TrainPlex Analyzer Files
-trainplex/

@@ -199,19 +199,19 @@ Function ConsentPageShow
   ${EndIf}
   ${IfThen} $(^RTL) = 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
 
-  ; Create larger, readable fonts
-  CreateFont $2 "Segoe UI" 10
-  CreateFont $3 "Segoe UI" 10 700
+  ; Create clean, readable typography with proper dialog unit metrics
+  CreateFont $2 "Segoe UI" 9
+  CreateFont $3 "Segoe UI" 9 600
 
-  ${NSD_CreateLabel} 0 0 100% 24u "Send2Me is a localized, peer-to-peer file transfer tool. To protect both you and us, please acknowledge:"
+  ${NSD_CreateLabel} 0 0 100% 16u "Send2Me is a peer-to-peer file transfer tool. Please acknowledge before setup:"
   Pop $0
   SendMessage $0 ${WM_SETFONT} $3 1
 
-  ${NSD_CreateLabel} 10u 26u 90% 72u "• No Cloud Storage: Files are sent directly device-to-device. We never store, scan, or monitor the contents of your files.$\r$\n$\r$\n• Sole Responsibility: You (the user) assume 100% legal responsibility for the safety, copyright, and legality of the files you transfer.$\r$\n$\r$\n• Local Data Only: Your transfer history and pairing codes live entirely on this device and are never uploaded."
+  ${NSD_CreateLabel} 0 18u 100% 50u "• Direct P2P: Files are sent directly device-to-device with zero cloud storage.$\r$\n• Sole Responsibility: You assume full responsibility for all files you choose to transfer.$\r$\n• Local Privacy: Transfer history and pairing codes remain strictly on this device."
   Pop $0
   SendMessage $0 ${WM_SETFONT} $2 1
 
-  ${NSD_CreateCheckbox} 0 102u 100% 24u "I understand how Send2Me works, accept the terms, and assume full responsibility for my transfers. (Required)"
+  ${NSD_CreateCheckbox} 0 72u 100% 22u "I understand how Send2Me works, accept terms, and assume liability. (Required)"
   Pop $ConsentCheckboxTerms
   SendMessage $ConsentCheckboxTerms ${WM_SETFONT} $3 1
   ${NSD_SetState} $ConsentCheckboxTerms ${BST_UNCHECKED}
@@ -221,7 +221,7 @@ Function ConsentPageShow
   GetDlgItem $0 $HWNDPARENT 1
   EnableWindow $0 0
 
-  ${NSD_CreateCheckbox} 0 128u 100% 20u "Allow anonymous crash reports to help Gaurav Patil improve Send2Me. (Optional)"
+  ${NSD_CreateCheckbox} 0 98u 100% 20u "Allow anonymous crash reports to help Gaurav Patil improve Send2Me. (Optional)"
   Pop $ConsentCheckboxTelemetry
   SendMessage $ConsentCheckboxTelemetry ${WM_SETFONT} $2 1
   ${NSD_SetState} $ConsentCheckboxTelemetry ${BST_UNCHECKED}
@@ -270,7 +270,7 @@ Function TermsPrivacyPageShow
     Abort
   ${EndIf}
   
-  !insertmacro MUI_HEADER_TEXT "Legal & Resources" "Additional policies and links."
+  !insertmacro MUI_HEADER_TEXT "Legal & Resources" "Policies, documentation, and developer links."
   
   nsDialogs::Create 1018
   Pop $TermsDialog
@@ -279,22 +279,30 @@ Function TermsPrivacyPageShow
   ${EndIf}
   ${IfThen} $(^RTL) = 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
   
-  ${NSD_CreateLabel} 0 0 100% 24u "Please review the full Terms of Service and Privacy Policy for Send2Me online:"
+  CreateFont $2 "Segoe UI" 9
+  CreateFont $3 "Segoe UI" 9 600
+
+  ${NSD_CreateLabel} 0 0 100% 16u "Review the full Terms of Service and Privacy Policy for Send2Me online:"
   Pop $0
+  SendMessage $0 ${WM_SETFONT} $3 1
   
-  ${NSD_CreateLink} 10u 30u 100% 12u "View Terms of Service"
+  ${NSD_CreateLink} 0 20u 100% 12u "➔ View Terms of Service (www.send2me.site/terms)"
   Pop $LinkTerms
+  SendMessage $LinkTerms ${WM_SETFONT} $2 1
   ${NSD_OnClick} $LinkTerms LinkTermsClick
   
-  ${NSD_CreateLink} 10u 45u 100% 12u "View Privacy Policy"
+  ${NSD_CreateLink} 0 36u 100% 12u "➔ View Privacy Policy (www.send2me.site/privacy)"
   Pop $LinkPrivacy
+  SendMessage $LinkPrivacy ${WM_SETFONT} $2 1
   ${NSD_OnClick} $LinkPrivacy LinkPrivacyClick
   
-  ${NSD_CreateLabel} 0 70u 100% 24u "For support, documentation, or to contact the developer:"
+  ${NSD_CreateLabel} 0 58u 100% 16u "For support, documentation, or to contact the developer:"
   Pop $0
+  SendMessage $0 ${WM_SETFONT} $3 1
   
-  ${NSD_CreateLink} 10u 100u 100% 12u "Developer Portfolio (www.gauravpatil.online)"
+  ${NSD_CreateLink} 0 78u 100% 12u "➔ Developer Portfolio & Contact (www.gauravpatil.online)"
   Pop $LinkDev
+  SendMessage $LinkDev ${WM_SETFONT} $2 1
   ${NSD_OnClick} $LinkDev LinkDevClick
   
   nsDialogs::Show
@@ -547,17 +555,21 @@ Function FirewallPageShow
   ${If} $FirewallDialog == error
     Abort
   ${EndIf}
-  ${IfThen} $(^RTL) = 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
-  
-  ${NSD_CreateLabel} 0 0 100% 32u "An exception must be added to the firewall to enable users to connect. Send2Me can attempt to add this exception, or you can configure the firewall yourself."
+  CreateFont $2 "Segoe UI" 9
+  CreateFont $3 "Segoe UI" 9 600
+
+  ${NSD_CreateLabel} 0 0 100% 28u "An inbound exception is recommended in the Windows Firewall so nearby devices can discover and connect to Send2Me on your local Wi-Fi."
   Pop $0
+  SendMessage $0 ${WM_SETFONT} $2 1
   
-  ${NSD_CreateCheckbox} 0 40u 100% 16u "Add an exception to the Windows firewall for Send2Me"
+  ${NSD_CreateCheckbox} 0 34u 100% 18u "Add an exception to Windows Defender Firewall for Send2Me (Recommended)"
   Pop $FirewallCheckbox
+  SendMessage $FirewallCheckbox ${WM_SETFONT} $3 1
   ${NSD_SetState} $FirewallCheckbox ${BST_CHECKED}
   
-  ${NSD_CreateLabel} 0 65u 100% 40u "IMPORTANT: If you are using a third-party firewall software or using an anti virus with firewall settings, you may need to manually allow 'Send2Me.exe' in the firewall settings in order to connect properly."
+  ${NSD_CreateLabel} 0 60u 100% 36u "Note: If using third-party security software (e.g. Norton, Bitdefender), you may also need to allow Send2Me in your antivirus firewall settings."
   Pop $0
+  SendMessage $0 ${WM_SETFONT} $2 1
   
   nsDialogs::Show
 FunctionEnd

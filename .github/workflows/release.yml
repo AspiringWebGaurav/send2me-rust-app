@@ -1,13 +1,29 @@
 name: "Release"
 
+# =============================================================================
+# RELEASE PIPELINE STATUS: DISCONNECTED (Manual / Paused during DB development)
+# 
+# HOW TO RECONNECT / RE-ENABLE AUTOMATIC RELEASES:
+# When you are ready to publish releases on every push to main, uncomment lines 14-20:
+#
+# on:
+#   push:
+#     branches:
+#       - main
+#     paths-ignore:
+#       - 'docs/**'
+#       - '*.md'
+#       - '.gitignore'
+# =============================================================================
+
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.gitignore'
+  # push:
+  #   branches:
+  #     - main
+  #   paths-ignore:
+  #     - 'docs/**'
+  #     - '*.md'
+  #     - '.gitignore'
   workflow_dispatch:
     inputs:
       draft:

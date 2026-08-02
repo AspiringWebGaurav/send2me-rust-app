@@ -116,91 +116,7 @@ jobs:
           retention-days: 7
 
   # =========================================================================
-  # 2. ANDROID BUILD (ARM64-v8a + Universal APKs - Compatible with Android 10+ / Galaxy S9+)
-  # =========================================================================
-  build-android:
-    name: "Build Android APK (ARM64 & Universal)"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js (v22 LTS)
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Setup Java JDK (v17)
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android NDK & Platform Tools
-        run: |
-          sdkmanager --install "ndk;26.1.10909125" "build-tools;34.0.0" "platforms;android-34"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
-
-      - name: Install Rust toolchain with Android targets
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "./ -> target"
-
-      - name: Install frontend dependencies
-        working-directory: apps/desktop
-        run: npm install
-
-      - name: Initialize Android Target & Apply Android 10+ Stability Fixes
-        working-directory: apps/desktop
-        run: |
-          npm run tauri android init -- --ci --skip-targets-install
-          chmod +x src-tauri/gen/android/gradlew 2>/dev/null || true
-          node scripts/patch-android.cjs
-
-      - name: Build Android Release APKs
-        working-directory: apps/desktop
-        run: |
-          npm run tauri android build -- --apk --target aarch64 armv7 --ci --split-per-abi
-
-      - name: Stage Android Release Assets
-        run: |
-          VERSION=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
-          mkdir -p android_assets
-
-          # Copy APK outputs
-          find apps/desktop/src-tauri/gen/android/app/build/outputs/apk -name "*.apk" -exec cp {} android_assets/ \;
-          
-          # Rename nicely if standard naming exists
-          if ls android_assets/*arm64*.apk 1> /dev/null 2>&1; then
-            mv android_assets/*arm64*.apk "android_assets/Send2Me_${VERSION}_Android-arm64-v8a.apk"
-          fi
-          if ls android_assets/*universal*.apk 1> /dev/null 2>&1; then
-            mv android_assets/*universal*.apk "android_assets/Send2Me_${VERSION}_Android-universal.apk"
-          fi
-          if ls android_assets/*release*.apk 1> /dev/null 2>&1; then
-            mv android_assets/*release*.apk "android_assets/Send2Me_${VERSION}_Android-arm64-v8a.apk" 2>/dev/null || true
-          fi
-
-          ls -lh android_assets/
-
-      - name: Upload Android Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-assets
-          path: android_assets/*
-          retention-days: 7
-
-  # =========================================================================
-  # 3. MACOS BUILD (Apple Silicon ARM64 & Intel x86_64 DMG)
+  # 2. MACOS BUILD (Apple Silicon ARM64 & Intel x86_64 DMG)
   # =========================================================================
   build-macos:
     name: "Build macOS (Apple Silicon & Intel)"
@@ -263,7 +179,7 @@ jobs:
           retention-days: 7
 
   # =========================================================================
-  # 4. LINUX BUILD (AppImage & DEB Package)
+  # 3. LINUX BUILD (AppImage & DEB Package)
   # =========================================================================
   build-linux:
     name: "Build Linux (x86_64 AppImage & DEB)"
@@ -332,16 +248,18 @@ jobs:
           retention-days: 7
 
   # =========================================================================
-  # 5. UNIFIED RELEASE PUBLISHER (Aggregates All Platforms + SHA256SUMS)
+  # 4. UNIFIED RELEASE PUBLISHER (Aggregates All Platforms + SHA256SUMS)
   # =========================================================================
   publish-release:
     name: "Publish Multi-Platform Release"
     runs-on: ubuntu-latest
-    needs: [build-windows, build-android, build-macos, build-linux]
-    if: always() && (needs.build-windows.result == 'success' || needs.build-android.result == 'success' || needs.build-macos.result == 'success' || needs.build-linux.result == 'success')
+    needs: [build-windows, build-macos, build-linux]
+    if: always() && (needs.build-windows.result == 'success' || needs.build-macos.result == 'success' || needs.build-linux.result == 'success')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -391,57 +309,69 @@ jobs:
           path: all_release_assets/*
           retention-days: 30
 
-      - name: Publish Public GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Create Git Tag (if not exists)
+        run: |
+          TAG="${{ steps.consolidate.outputs.TAG_NAME }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, deleting and re-creating..."
+            git tag -d "$TAG" 2>/dev/null || true
+            git push origin ":refs/tags/$TAG" 2>/dev/null || true
+          fi
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "Created and pushed tag: $TAG"
+
+      - name: Delete Existing Release (if exists)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.consolidate.outputs.TAG_NAME }}
-          name: "Send2Me v${{ steps.consolidate.outputs.VERSION }} (All Devices)"
-          draft: ${{ github.event.inputs.draft || false }}
-          prerelease: ${{ github.event.inputs.prerelease || false }}
-          generate_release_notes: true
-          files: all_release_assets/*
-          body: |
-            ## Send2Me Universal Desktop & Mobile v${{ steps.consolidate.outputs.VERSION }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.consolidate.outputs.TAG_NAME }}"
+          # Delete any existing release for this tag so we get a clean publish
+          gh release delete "$TAG" --yes 2>/dev/null || echo "No existing release to delete."
 
-            Fast, localized, zero-cloud peer-to-peer file transfer and folder sync for all your devices.
+      - name: Publish Public GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.consolidate.outputs.TAG_NAME }}"
+          VERSION="${{ steps.consolidate.outputs.VERSION }}"
 
-            ---
+          gh release create "$TAG" \
+            all_release_assets/* \
+            --title "Send2Me v${VERSION} (All Devices)" \
+            --notes "## Send2Me Universal Desktop v${VERSION}
 
-            ### 🚀 Official Downloads by Operating System
+          Fast, localized, zero-cloud peer-to-peer file transfer and folder sync for all your devices.
 
-            #### 🪟 Windows (10 / 11)
-            | Package | Type | Description |
-            | :--- | :--- | :--- |
-            | **`Send2Me_${{ steps.consolidate.outputs.VERSION }}_x64-setup.exe`** | **Setup Installer (Recommended)** | Standard Windows installer with start-menu shortcuts and firewall setup. |
-            | **`Send2Me_${{ steps.consolidate.outputs.VERSION }}_x64.msi`** | **Enterprise MSI** | Enterprise Windows Installer for silent / Group Policy deployments. |
-            | **`Send2Me_${{ steps.consolidate.outputs.VERSION }}_x64-portable.exe`** | **Portable Binary** | Standalone zero-install executable. |
-            | **`Send2Me_${{ steps.consolidate.outputs.VERSION }}_windows-x64.zip`** | **Portable ZIP** | Compressed archive containing standalone executable. |
+          ---
 
-            #### 🤖 Android (Phone, Tablet & TV)
-            | Package | Compatibility | Description |
-            | :--- | :--- | :--- |
-            | **`Send2Me_${{ steps.consolidate.outputs.VERSION }}_Android-arm64-v8a.apk`** | **Android 10+ (Galaxy S9+, Modern Phones)** | High-performance 64-bit APK with Scoped Storage & WiFi Multicast support. |
-            | **`Send2Me_${{ steps.consolidate.outputs.VERSION }}_Android-universal.apk`** | **Android 7.0+ (Universal All Devices)** | Compatible with all ARM32, ARM64, and x86 Android devices. |
+          ### 🚀 Official Downloads by Operating System
 
-            #### 🍎 macOS (Apple Silicon & Intel)
-            | Package | Architecture | Description |
-            | :--- | :--- | :--- |
-            | **`Send2Me_${{ steps.consolidate.outputs.VERSION }}_macOS-arm64.dmg`** | **Apple Silicon (M1/M2/M3/M4)** | Drag-and-drop installer for Apple Silicon Macs. |
-            | **`Send2Me_${{ steps.consolidate.outputs.VERSION }}_macOS-x86_64.dmg`** | **Intel Mac (x86_64)** | Drag-and-drop installer for Intel Macs. |
+          #### 🪟 Windows (10 / 11)
+          | Package | Type | Description |
+          | :--- | :--- | :--- |
+          | **Send2Me_${VERSION}_x64-setup.exe** | **Setup Installer (Recommended)** | Standard Windows installer with start-menu shortcuts and firewall setup. |
+          | **Send2Me_${VERSION}_x64.msi** | **Enterprise MSI** | Enterprise Windows Installer for silent / Group Policy deployments. |
+          | **Send2Me_${VERSION}_x64-portable.exe** | **Portable Binary** | Standalone zero-install executable. |
+          | **Send2Me_${VERSION}_windows-x64.zip** | **Portable ZIP** | Compressed archive containing standalone executable. |
 
-            #### 🐧 Linux (All Distributions)
-            | Package | Format | Description |
-            | :--- | :--- | :--- |
-            | **`Send2Me_${{ steps.consolidate.outputs.VERSION }}_Linux-x86_64.AppImage`** | **Universal AppImage** | Runs on Ubuntu, Debian, Fedora, Arch, and any modern Linux distro. |
-            | **`Send2Me_${{ steps.consolidate.outputs.VERSION }}_Linux-x86_64.deb`** | **Debian / Ubuntu Package** | Native `.deb` installer. |
-            | **`Send2Me_${{ steps.consolidate.outputs.VERSION }}_Linux-x86_64.tar.gz`** | **Standalone Tarball** | Portable Linux binary archive. |
+          #### 🍎 macOS (Apple Silicon & Intel)
+          | Package | Architecture | Description |
+          | :--- | :--- | :--- |
+          | **Send2Me_${VERSION}_macOS-arm64.dmg** | **Apple Silicon (M1/M2/M3/M4)** | Drag-and-drop installer for Apple Silicon Macs. |
+          | **Send2Me_${VERSION}_macOS-x86_64.dmg** | **Intel Mac (x86_64)** | Drag-and-drop installer for Intel Macs. |
 
-            ---
+          #### 🐧 Linux (All Distributions)
+          | Package | Format | Description |
+          | :--- | :--- | :--- |
+          | **Send2Me_${VERSION}_Linux-x86_64.AppImage** | **Universal AppImage** | Runs on Ubuntu, Debian, Fedora, Arch, and any modern Linux distro. |
+          | **Send2Me_${VERSION}_Linux-x86_64.deb** | **Debian / Ubuntu Package** | Native .deb installer. |
+          | **Send2Me_${VERSION}_Linux-x86_64.tar.gz** | **Standalone Tarball** | Portable Linux binary archive. |
 
-            ### 🔒 Cryptographic Verification
-            Verify the SHA-256 integrity of your downloaded package:
-            - **Windows PowerShell:** `Get-FileHash -Algorithm SHA256 .\Send2Me-Setup.exe`
-            - **Linux / macOS:** `sha256sum Send2Me-Linux-x86_64.AppImage`
-            - Check against **`SHA256SUMS.txt`** attached below.
+          ---
+
+          ### 🔒 Cryptographic Verification
+          Verify the SHA-256 integrity of your downloaded package:
+          - **Windows PowerShell:** \`Get-FileHash -Algorithm SHA256 .\Send2Me-Setup.exe\`
+          - **Linux / macOS:** \`sha256sum Send2Me-Linux-x86_64.AppImage\`
+          - Check against **SHA256SUMS.txt** attached below."

@@ -76,6 +76,7 @@ Var OldMainBinaryName
 Var ConsentDialog
 Var ConsentCheckboxTerms
 Var ConsentCheckboxTelemetry
+Var ConsentCheckboxSelectAll
 Var ConsentTermsAccepted
 Var ConsentTelemetryOptIn
 
@@ -203,11 +204,11 @@ Function ConsentPageShow
   CreateFont $2 "Segoe UI" 9
   CreateFont $3 "Segoe UI" 9 600
 
-  ${NSD_CreateLabel} 0 0 100% 64u "Send2Me is a peer-to-peer file transfer tool. Please acknowledge before setup:$\r$\n$\r$\n• Direct P2P: Files are sent directly device-to-device with zero cloud storage.$\r$\n• Sole Responsibility: You assume full responsibility for transferred files.$\r$\n• Local Privacy: Pairing history and codes stay strictly on your device."
+  ${NSD_CreateLabel} 0 0 100% 56u "Send2Me is a peer-to-peer file transfer tool. Please acknowledge before setup:$\r$\n$\r$\n• Direct P2P: Files are sent directly device-to-device with zero cloud storage.$\r$\n• Sole Responsibility: You assume full responsibility for transferred files.$\r$\n• Local Privacy: Pairing history and codes stay strictly on your device."
   Pop $0
   SendMessage $0 ${WM_SETFONT} $2 1
 
-  ${NSD_CreateCheckbox} 0 68u 100% 20u "I understand and accept the transfer terms and liability. (Required)"
+  ${NSD_CreateCheckbox} 0 60u 100% 16u "I understand and accept the transfer terms and liability. (Required)"
   Pop $ConsentCheckboxTerms
   SendMessage $ConsentCheckboxTerms ${WM_SETFONT} $3 1
   ${NSD_SetState} $ConsentCheckboxTerms ${BST_UNCHECKED}
@@ -217,22 +218,62 @@ Function ConsentPageShow
   GetDlgItem $0 $HWNDPARENT 1
   EnableWindow $0 0
 
-  ${NSD_CreateCheckbox} 0 92u 100% 20u "Allow anonymous crash reports to help Gaurav Patil improve Send2Me. (Optional)"
+  ${NSD_CreateCheckbox} 0 78u 100% 16u "Allow anonymous crash reports to help Gaurav Patil improve Send2Me. (Optional)"
   Pop $ConsentCheckboxTelemetry
   SendMessage $ConsentCheckboxTelemetry ${WM_SETFONT} $2 1
   ${NSD_SetState} $ConsentCheckboxTelemetry ${BST_UNCHECKED}
+  ${NSD_OnClick} $ConsentCheckboxTelemetry ConsentCheckboxTelemetryClick
+
+  ${NSD_CreateCheckbox} 0 98u 100% 16u "Select all options"
+  Pop $ConsentCheckboxSelectAll
+  SendMessage $ConsentCheckboxSelectAll ${WM_SETFONT} $3 1
+  ${NSD_SetState} $ConsentCheckboxSelectAll ${BST_UNCHECKED}
+  ${NSD_OnClick} $ConsentCheckboxSelectAll ConsentCheckboxSelectAllClick
 
   nsDialogs::Show
 FunctionEnd
 
 Function ConsentCheckboxTermsClick
   Pop $0
+  Call ConsentSyncUI
+FunctionEnd
+
+Function ConsentCheckboxTelemetryClick
+  Pop $0
+  Call ConsentSyncUI
+FunctionEnd
+
+Function ConsentCheckboxSelectAllClick
+  Pop $0
+  ${NSD_GetState} $ConsentCheckboxSelectAll $0
+  ${If} $0 == ${BST_CHECKED}
+    ${NSD_SetState} $ConsentCheckboxTerms ${BST_CHECKED}
+    ${NSD_SetState} $ConsentCheckboxTelemetry ${BST_CHECKED}
+  ${Else}
+    ${NSD_SetState} $ConsentCheckboxTerms ${BST_UNCHECKED}
+    ${NSD_SetState} $ConsentCheckboxTelemetry ${BST_UNCHECKED}
+  ${EndIf}
+  Call ConsentSyncUI
+FunctionEnd
+
+Function ConsentSyncUI
   ${NSD_GetState} $ConsentCheckboxTerms $1
+  ${NSD_GetState} $ConsentCheckboxTelemetry $2
+
+  ; Enable Next button only if required terms are checked
   GetDlgItem $0 $HWNDPARENT 1
   ${If} $1 == ${BST_CHECKED}
     EnableWindow $0 1
   ${Else}
     EnableWindow $0 0
+  ${EndIf}
+
+  ; Keep "Select all" in sync
+  ${If} $1 == ${BST_CHECKED}
+  ${AndIf} $2 == ${BST_CHECKED}
+    ${NSD_SetState} $ConsentCheckboxSelectAll ${BST_CHECKED}
+  ${Else}
+    ${NSD_SetState} $ConsentCheckboxSelectAll ${BST_UNCHECKED}
   ${EndIf}
 FunctionEnd
 
@@ -266,7 +307,7 @@ Function TermsPrivacyPageShow
     Abort
   ${EndIf}
   
-  !insertmacro MUI_HEADER_TEXT "Legal & Resources" "Policies, documentation, and developer links."
+  !insertmacro MUI_HEADER_TEXT "Legal and Resources" "Policies, documentation, and developer links."
   
   nsDialogs::Create 1018
   Pop $TermsDialog
@@ -278,25 +319,25 @@ Function TermsPrivacyPageShow
   CreateFont $2 "Segoe UI" 9
   CreateFont $3 "Segoe UI" 9 600
 
-  ${NSD_CreateLabel} 0 0 100% 16u "Review the full Terms of Service and Privacy Policy for Send2Me online:"
+  ${NSD_CreateLabel} 0 0 100% 24u "Review the full Terms of Service and Privacy Policy for Send2Me online:"
   Pop $0
   SendMessage $0 ${WM_SETFONT} $3 1
   
-  ${NSD_CreateLink} 0 20u 100% 12u "➔ View Terms of Service (www.send2me.site/terms)"
+  ${NSD_CreateLink} 0 28u 100% 14u "➔ View Terms of Service (www.send2me.site/terms)"
   Pop $LinkTerms
   SendMessage $LinkTerms ${WM_SETFONT} $2 1
   ${NSD_OnClick} $LinkTerms LinkTermsClick
   
-  ${NSD_CreateLink} 0 36u 100% 12u "➔ View Privacy Policy (www.send2me.site/privacy)"
+  ${NSD_CreateLink} 0 46u 100% 14u "➔ View Privacy Policy (www.send2me.site/privacy)"
   Pop $LinkPrivacy
   SendMessage $LinkPrivacy ${WM_SETFONT} $2 1
   ${NSD_OnClick} $LinkPrivacy LinkPrivacyClick
   
-  ${NSD_CreateLabel} 0 58u 100% 16u "For support, documentation, or to contact the developer:"
+  ${NSD_CreateLabel} 0 68u 100% 16u "For support, documentation, or to contact the developer:"
   Pop $0
   SendMessage $0 ${WM_SETFONT} $3 1
   
-  ${NSD_CreateLink} 0 78u 100% 12u "➔ Developer Portfolio & Contact (www.gauravpatil.online)"
+  ${NSD_CreateLink} 0 88u 100% 14u "➔ Developer Portfolio and Contact (www.gauravpatil.online)"
   Pop $LinkDev
   SendMessage $LinkDev ${WM_SETFONT} $2 1
   ${NSD_OnClick} $LinkDev LinkDevClick

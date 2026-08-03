@@ -50,6 +50,26 @@ fn get_app_info(app: AppHandle) -> AppInfo {
     }
 }
 
+#[tauri::command]
+fn get_hardware_id() -> String {
+    let mut hardware_id = String::new();
+    
+    if let Ok(uid) = machine_uid::get() {
+        hardware_id = uid;
+    }
+    
+    if hardware_id.is_empty() {
+        hardware_id = format!("{}-{}", 
+            std::env::var("COMPUTERNAME").unwrap_or_else(|_| "Unknown".to_string()),
+            std::env::var("USERNAME").unwrap_or_else(|_| "User".to_string())
+        );
+    }
+    
+    let hash = blake3::hash(hardware_id.as_bytes());
+    let hex = hash.to_hex();
+    hex[0..16].to_uppercase()
+}
+
 #[cfg(desktop)]
 pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
     use tauri::tray::{TrayIconBuilder, TrayIconEvent};
@@ -450,6 +470,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_app_info,
+            get_hardware_id,
             activate_background_daemon,
             get_local_device,
             get_trusted_devices,

@@ -9,8 +9,11 @@ export function Footer() {
   const appInfo = useAppStore(s => s.appInfo);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [isP2PActive, setIsP2PActive] = useState<boolean>(false);
+  const [hwid, setHwid] = useState<string>('');
 
   useEffect(() => {
+    invoke<string>('get_hardware_id').then(setHwid).catch(console.error);
+    
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
@@ -81,7 +84,7 @@ export function Footer() {
         </button>
         <div className="w-px h-3 bg-border/70"></div>
         <button
-          onClick={() => openUrl('https://www.send2me.site/policies')}
+          onClick={() => openUrl('https://www.send2me.site/privacy')}
           className="hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
         >
           Privacy
@@ -89,6 +92,14 @@ export function Footer() {
       </div>
 
       <div className="flex items-center gap-3 text-muted-foreground">
+        {hwid && (
+          <>
+            <span className="hidden sm:block tabular-nums bg-secondary/30 px-2 py-0.5 rounded border border-border/50 text-[10px]" title="Hardware ID">
+              HWID: {hwid}
+            </span>
+            <div className="w-px h-3 bg-border/70 hidden sm:block"></div>
+          </>
+        )}
         <button
           onClick={() => openUrl('https://github.com/AspiringWebGaurav')}
           className="group flex items-center gap-1.5 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"

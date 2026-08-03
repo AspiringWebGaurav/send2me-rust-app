@@ -17,6 +17,7 @@ import { FileSize } from "../components/ui/FileSize";
 import { FolderSyncOnboardingModal } from "../components/FolderSyncOnboardingModal";
 import { BindTermsModal } from "../components/BindTermsModal";
 import { Toaster } from 'sonner';
+import { LockScreen } from "../components/LockScreen";
 
 export function AppLayout() {
   const location = useLocation();
@@ -267,6 +268,7 @@ export function AppLayout() {
       ))}
 
       <Toaster position="bottom-left" richColors />
+      <LockScreen />
     </div>
   );
 }

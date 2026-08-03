@@ -52,6 +52,21 @@ fn get_app_info(app: AppHandle) -> AppInfo {
 
 #[tauri::command]
 fn get_hardware_id() -> String {
+    let mut path = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let suffix = std::env::var("SEND2ME_APP_DIR_SUFFIX").unwrap_or_default();
+    path.push(format!("send2me{}", suffix));
+    std::fs::create_dir_all(&path).unwrap_or_default();
+    path.push("hwid.txt");
+
+    if path.exists() {
+        if let Ok(saved_hwid) = std::fs::read_to_string(&path) {
+            let saved = saved_hwid.trim().to_string();
+            if !saved.is_empty() {
+                return saved;
+            }
+        }
+    }
+
     let mut hardware_id = String::new();
     
     if let Ok(uid) = machine_uid::get() {
@@ -67,7 +82,11 @@ fn get_hardware_id() -> String {
     
     let hash = blake3::hash(hardware_id.as_bytes());
     let hex = hash.to_hex();
-    hex[0..16].to_uppercase()
+    let final_hwid = hex[0..16].to_uppercase();
+
+    let _ = std::fs::write(&path, &final_hwid);
+    
+    final_hwid
 }
 
 #[cfg(desktop)]

@@ -3,8 +3,12 @@ import {
  getDatabase, 
  ref, 
  onValue,
+ set,
+ update,
+ get,
  type Database,
 } from 'firebase/database';
+import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 
 const firebaseConfig = {
  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -18,5 +22,6 @@ const firebaseConfig = {
 
 const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const database: Database = getDatabase(app);
+const auth = getAuth(app);
 
-export { database, ref, onValue };
+export { database, ref, onValue, set, update, get, auth, signInAnonymously, signInWithCustomToken };

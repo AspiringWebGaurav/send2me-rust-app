@@ -490,6 +490,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_app_info,
             get_hardware_id,
+            services::security_service::get_security_state,
+            services::security_service::update_security_state,
+            services::security_service::ping_online,
             activate_background_daemon,
             get_local_device,
             get_trusted_devices,

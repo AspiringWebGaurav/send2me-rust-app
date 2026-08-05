@@ -15,3 +15,4 @@ pub mod sync_receiver_service;
 pub mod sync_state_manager;
 pub mod p2p_drive_service;
 pub mod security_service;
+pub mod anti_debug;

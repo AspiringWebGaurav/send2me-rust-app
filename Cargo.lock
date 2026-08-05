@@ -1469,6 +1469,7 @@ dependencies = [
  "iroh 0.28.1",
  "machine-uid",
  "network",
+ "obfstr",
  "p2p_drive",
  "platform",
  "protocol",
@@ -1489,6 +1490,7 @@ dependencies = [
  "tracing-subscriber",
  "transfer",
  "uuid",
+ "windows-sys 0.52.0",
  "winreg 0.56.0",
 ]
 
@@ -5291,6 +5293,12 @@ dependencies = [
  "quote",
  "syn 2.0.119",
 ]
+
+[[package]]
+name = "obfstr"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cf5f1acbf6ef57cef9d127e72c4afd01d6b08692616fd09afad7f7807d6eb78"
 
 [[package]]
 name = "objc2"

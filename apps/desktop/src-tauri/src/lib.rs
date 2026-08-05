@@ -83,19 +83,85 @@ fn get_hardware_id() -> String {
     std::fs::create_dir_all(&path).unwrap_or_default();
     path.push("hwid.txt");
 
+    let mut is_tampered = false;
+
     if path.exists() {
-        if let Ok(saved_hwid) = std::fs::read_to_string(&path) {
-            let saved = saved_hwid.trim().to_string();
-            if !saved.is_empty() {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            let parts: Vec<&str> = content.split('\n').collect();
+            if parts.len() == 2 {
+                let saved = parts[0].trim().to_string();
+                let stored_hash = parts[1].trim();
+                let computed_hash = blake3::hash(format!("{}{}", saved, obfstr::obfstr!("SEND2ME_HWID_SALT_V1_9X8Y")).as_bytes()).to_hex();
+                
+                if computed_hash.to_string() == stored_hash {
+                    if !saved.is_empty() {
+                        return saved;
+                    }
+                } else {
+                    is_tampered = true; // Hash mismatch!
+                }
+            } else if parts.len() == 1 && !content.trim().is_empty() {
+                // Graceful Migration: Legacy file without hash!
+                // Do not punish existing valid users, instead upgrade their file.
+                let saved = content.trim().to_string();
+                let computed_hash = blake3::hash(format!("{}{}", saved, obfstr::obfstr!("SEND2ME_HWID_SALT_V1_9X8Y")).as_bytes()).to_hex();
+                let data = format!("{}\n{}", saved, computed_hash);
+                let _ = std::fs::write(&path, &data);
                 return saved;
+            } else if !content.trim().is_empty() {
+                is_tampered = true; // Completely invalid format!
             }
         }
+    }
+
+    if is_tampered {
+        // Tampering detected on HWID file!
+        // Instantly write 'banned' to the core security state.
+        let mut sec_state = services::security_service::get_security_state_internal();
+        sec_state.status = "banned".to_string();
+        let _ = services::security_service::save_security_state_internal(&sec_state);
+        // Wipe the tampered file so we can extract their real HWID to ban it.
+        let _ = std::fs::remove_file(&path);
     }
 
     let mut hardware_id = String::new();
     
     if let Ok(uid) = machine_uid::get() {
         hardware_id = uid;
+    }
+    
+    #[cfg(target_os = "windows")]
+    if hardware_id.is_empty() {
+        use winreg::enums::*;
+        use winreg::RegKey;
+        let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+        if let Ok(crypto_key) = hklm.open_subkey_with_flags("SOFTWARE\\Microsoft\\Cryptography", KEY_READ) {
+            if let Ok(guid) = crypto_key.get_value::<String, _>("MachineGuid") {
+                hardware_id = guid;
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    if hardware_id.is_empty() {
+        use std::os::windows::process::CommandExt;
+        // Additional fallback: WMI for UUID
+        if let Ok(wmi_uid) = std::process::Command::new("wmic")
+            .args(&["csproduct", "get", "UUID"])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .output() 
+        {
+            let output_str = String::from_utf8_lossy(&wmi_uid.stdout);
+            let mut lines = output_str.lines();
+            if let Some(_) = lines.next() { // Skip header
+                if let Some(uuid) = lines.next() {
+                    let clean = uuid.trim();
+                    if !clean.is_empty() && clean != "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF" {
+                        hardware_id = clean.to_string();
+                    }
+                }
+            }
+        }
     }
     
     if hardware_id.is_empty() {
@@ -109,7 +175,10 @@ fn get_hardware_id() -> String {
     let hex = hash.to_hex();
     let final_hwid = hex[0..16].to_uppercase();
 
-    let _ = std::fs::write(&path, &final_hwid);
+    // Secure the file with a cryptographic hash
+    let computed_hash = blake3::hash(format!("{}{}", final_hwid, obfstr::obfstr!("SEND2ME_HWID_SALT_V1_9X8Y")).as_bytes()).to_hex();
+    let data = format!("{}\n{}", final_hwid, computed_hash);
+    let _ = std::fs::write(&path, &data);
     
     final_hwid
 }
@@ -269,6 +338,9 @@ fn open_firewall_settings() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // START ANTI-DEBUGGER DAEMON
+    services::anti_debug::spawn();
+    
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

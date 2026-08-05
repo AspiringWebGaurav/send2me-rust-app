@@ -25,8 +25,8 @@ fn security_path() -> PathBuf {
     path
 }
 
-fn get_salt() -> &'static str {
-    "SEND2ME_SECURITY_SALT_V1_8A9B2C4D"
+fn get_salt() -> String {
+    obfstr::obfstr!("SEND2ME_SECURITY_SALT_V1_8A9B2C4D").to_string()
 }
 
 /// Read the security state from disk with tamper-detection
@@ -41,8 +41,13 @@ pub fn get_security_state_internal() -> SecurityState {
         Err(_) => return SecurityState::default(),
     };
 
+    if content.trim().is_empty() {
+        // Prevent accidental bans from 0-byte corrupted files (e.g. power outage)
+        return SecurityState::default();
+    }
+
     let parts: Vec<&str> = content.split('\n').collect();
-    if parts.len() != 2 {
+    if parts.len() < 2 {
         // Tampered or corrupted file structure
         return SecurityState {
             status: "banned".into(),

@@ -32,7 +32,7 @@ fn security_path() -> PathBuf {
 fn get_encryption_key() -> Key<Aes256Gcm> {
     let salt = obfstr::obfstr!("SEND2ME_SECURE_ENCRYPTION_KEY_V2_8A9B2C4D").to_string();
     let hash = blake3::hash(salt.as_bytes());
-    *Key::<Aes256Gcm>::from_slice(hash.as_bytes())
+    Key::<Aes256Gcm>::from(*hash.as_bytes())
 }
 
 #[cfg(target_os = "windows")]
@@ -124,10 +124,11 @@ pub fn get_security_state_internal() -> SecurityState {
     let key = get_encryption_key();
     let cipher = Aes256Gcm::new(&key);
     
-    let nonce = Nonce::from_slice(&encrypted_data[0..12]);
+    let nonce_bytes: &[u8; 12] = encrypted_data[0..12].try_into().unwrap();
+    let nonce = Nonce::from(*nonce_bytes);
     let ciphertext = &encrypted_data[12..];
     
-    let decrypted_bytes = match cipher.decrypt(nonce, ciphertext) {
+    let decrypted_bytes = match cipher.decrypt(&nonce, ciphertext) {
         Ok(b) => b,
         Err(_) => {
             // Decryption failed = TAMPERED!
@@ -148,10 +149,10 @@ pub fn save_security_state_internal(state: &SecurityState) -> Result<(), String>
     
     // Generate 12 bytes of random data for the nonce using UUID
     let uuid_bytes = uuid::Uuid::new_v4();
-    let nonce_bytes = &uuid_bytes.as_bytes()[0..12];
-    let nonce = Nonce::from_slice(nonce_bytes);
+    let nonce_bytes: &[u8; 12] = uuid_bytes.as_bytes()[0..12].try_into().unwrap();
+    let nonce = Nonce::from(*nonce_bytes);
     
-    let ciphertext = cipher.encrypt(nonce, payload.as_bytes()).map_err(|e| e.to_string())?;
+    let ciphertext = cipher.encrypt(&nonce, payload.as_bytes()).map_err(|e| e.to_string())?;
     
     let mut final_data = nonce.to_vec();
     final_data.extend_from_slice(&ciphertext);

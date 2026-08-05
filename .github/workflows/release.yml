@@ -17,13 +17,13 @@ name: "Release"
 # =============================================================================
 
 on:
-  # push:
-  #   branches:
-  #     - main
-  #   paths-ignore:
-  #     - 'docs/**'
-  #     - '*.md'
-  #     - '.gitignore'
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.gitignore'
   workflow_dispatch:
     inputs:
       draft:

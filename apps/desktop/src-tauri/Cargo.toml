@@ -1,7 +1,7 @@
 [package]
-name = "desktop"
-version = "0.1.0"
-description = "Send2Me"
+name = "send2me"
+version = "0.1.6"
+description = "A Tauri App"
 authors = ["Gaurav Patil"]
 edition = "2021"
 

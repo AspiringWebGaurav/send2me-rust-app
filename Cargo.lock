@@ -1521,43 +1521,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "desktop"
-version = "0.1.0"
-dependencies = [
- "aes-gcm 0.11.0",
- "anyhow",
- "blake3",
- "chrono",
- "dirs 6.0.0",
- "iroh 0.28.1",
- "machine-uid",
- "network",
- "obfstr",
- "p2p_drive",
- "platform",
- "protocol",
- "send2me_core",
- "serde",
- "serde_json",
- "storage",
- "sync",
- "sysinfo",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "transfer",
- "uuid",
- "windows-sys 0.52.0",
- "winreg 0.56.0",
-]
-
-[[package]]
 name = "diatomic-waker"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7511,6 +7474,43 @@ checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 dependencies = [
  "serde",
  "serde_core",
+]
+
+[[package]]
+name = "send2me"
+version = "0.1.6"
+dependencies = [
+ "aes-gcm 0.11.0",
+ "anyhow",
+ "blake3",
+ "chrono",
+ "dirs 6.0.0",
+ "iroh 0.28.1",
+ "machine-uid",
+ "network",
+ "obfstr",
+ "p2p_drive",
+ "platform",
+ "protocol",
+ "send2me_core",
+ "serde",
+ "serde_json",
+ "storage",
+ "sync",
+ "sysinfo",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "transfer",
+ "uuid",
+ "windows-sys 0.52.0",
+ "winreg 0.56.0",
 ]
 
 [[package]]

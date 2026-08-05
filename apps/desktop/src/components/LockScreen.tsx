@@ -181,11 +181,12 @@ export function LockScreen() {
             await set(nodeRef, {
               status: initialSetStatus,
               os: isWin11 ? 'Windows 11' : 'Windows 10',
+              version: appInfo.version,
               lastSeen: Date.now(),
             });
             await logSecurityEvent('REGISTRATION', `Node registered successfully. Initial status: ${initialSetStatus.toUpperCase()}`);
           } else {
-            await update(nodeRef, { lastSeen: Date.now() });
+            await update(nodeRef, { lastSeen: Date.now(), version: appInfo.version });
           }
         } catch (err: any) {
           console.error("Failed to sync node presence:", err);

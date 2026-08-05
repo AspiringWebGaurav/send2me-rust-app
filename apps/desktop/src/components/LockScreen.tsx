@@ -63,15 +63,33 @@ export function LockScreen() {
         try {
           setAuthFailed(false); // Reset auth failed state
           
-          // Use production URL if localhost fails, or fallback to production if we want to be robust. 
-          // For now, let's just make sure we capture the exact error.
-          const apiUrl = import.meta.env.VITE_ADMIN_API_URL || 'http://localhost:3000/api/auth/token';
-          
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ hwid: id })
-          });
+          // Aggressive multi-fallback to ensure we can hit the Admin API whether it's on 3000, 3001, or Production
+          const urlsToTry = [
+            import.meta.env.VITE_ADMIN_API_URL,
+            'http://localhost:3001/api/auth/token',
+            'http://localhost:3000/api/auth/token',
+            'https://www.send2me.site/api/auth/token'
+          ].filter(Boolean) as string[];
+
+          let response: Response | null = null;
+          let lastError: Error | null = null;
+
+          for (const url of urlsToTry) {
+            try {
+              response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hwid: id })
+              });
+              if (response.ok) break; // Found a working API
+            } catch (err: any) {
+              lastError = err;
+            }
+          }
+
+          if (!response) {
+            throw new Error(`Failed to fetch from all Admin API endpoints. Is the server running? ${lastError?.message}`);
+          }
           
           const data = await response.json().catch(() => ({}));
 

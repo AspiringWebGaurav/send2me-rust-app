@@ -1,8 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { database, ref, onValue, set, get, update, auth, signInAnonymously, signInWithCustomToken } from '../lib/firebase';
+import { database, ref, onValue, set, get, update, auth, signInWithCustomToken } from '../lib/firebase';
 import { Ban, Wrench, AlertTriangle, WifiOff, Send, ShieldAlert, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// Simple semantic version comparator
+const isVersionGreater = (v1: string, v2: string) => {
+  const p1 = v1.split('.').map(Number);
+  const p2 = v2.split('.').map(Number);
+  for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+    const num1 = p1[i] || 0;
+    const num2 = p2[i] || 0;
+    if (num1 > num2) return true;
+    if (num1 < num2) return false;
+  }
+  return false;
+};
 
 export function LockScreen() {
   const [hwid, setHwid] = useState<string | null>(null);
@@ -16,6 +29,9 @@ export function LockScreen() {
   const [authFailed, setAuthFailed] = useState(false);
   const [authError, setAuthError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+  const [isChecking, setIsChecking] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const isInitializing = useRef(false);
 
   useEffect(() => {
     const handleOnline = async () => {
@@ -36,6 +52,9 @@ export function LockScreen() {
 
   useEffect(() => {
     async function setupSecurity() {
+      if (isInitializing.current) return;
+      isInitializing.current = true;
+      
       try {
         const id = await invoke<string>('get_hardware_id');
         setHwid(id);
@@ -106,7 +125,6 @@ export function LockScreen() {
             }
             
             if (isMismatch) {
-              setUpdateRequired({ enabled: true, version: reqVer });
               initialStatus = 'update'; 
               await logSecurityEvent('SYSTEM', `Node locked: Outdated version detected. Required: ${reqVer}, Current: ${appInfo.version}`);
             } else {
@@ -180,6 +198,14 @@ export function LockScreen() {
                 message: data.message || 'The network is currently undergoing scheduled maintenance.'
               });
             }
+            if (data.version) {
+              // Real-time check for version update lock
+              if (isVersionGreater(data.version, appInfo.version)) {
+                setUpdateRequired({ enabled: true, version: data.version });
+              } else {
+                setUpdateRequired({ enabled: false, version: '' });
+              }
+            }
           }
         });
 
@@ -189,6 +215,8 @@ export function LockScreen() {
           if (snapshot.exists()) {
             setAppealSent(true);
           }
+          // We have finished fetching all necessary data from Firebase
+          setIsChecking(false);
         });
 
         return () => {
@@ -198,6 +226,7 @@ export function LockScreen() {
         };
       } catch (e) {
         console.error('Failed to setup security listeners:', e);
+        setIsChecking(false);
       }
     }
     setupSecurity();
@@ -219,7 +248,7 @@ export function LockScreen() {
     }
   };
 
-  const isLocked = status === 'banned' || status === 'hold' || maintenance.enabled || isOfflineHold || updateRequired.enabled || authFailed;
+  const isLocked = status === 'banned' || status === 'hold' || maintenance.enabled || isOfflineHold || updateRequired.enabled || authFailed || isChecking;
 
   return (
     <AnimatePresence>
@@ -232,8 +261,22 @@ export function LockScreen() {
           className="fixed inset-0 z-[99999] bg-background"
         >
           
+          {/* INITIALIZING STARTUP CHECK */}
+          {isChecking && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 flex flex-col items-center justify-center bg-background text-foreground p-12 text-center"
+            >
+              <div className="w-16 h-16 rounded-full border-4 border-primary border-t-transparent animate-spin mb-6" />
+              <h1 className="text-2xl md:text-3xl font-black mb-2 tracking-tight">Securing Connection</h1>
+              <p className="text-muted-foreground text-sm font-medium">Please wait while we verify your system status...</p>
+            </motion.div>
+          )}
+
           {/* OFFLINE FOR > 24 HOURS */}
-          {isOfflineHold && status !== 'banned' && (
+          {isOfflineHold && status !== 'banned' && !isChecking && (
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -398,10 +441,47 @@ export function LockScreen() {
                 Your Send2Me client is outdated or out of sync. You must update to version <strong className="text-white bg-black/20 px-3 py-1 rounded-md ml-1">{updateRequired.version}</strong> to continue using the network.
               </p>
               <button 
-                onClick={() => window.open('https://www.send2me.site', '_blank')}
-                className="px-12 py-5 bg-white text-blue-800 hover:bg-white/90 hover:scale-105 active:scale-95 rounded-full font-bold shadow-[0_0_40px_rgba(255,255,255,0.3)] flex items-center justify-center transition-all text-xl"
+                disabled={isUpdating}
+                onClick={async () => {
+                  setIsUpdating(true);
+                  try {
+                    await invoke('set_app_version_override', { version: updateRequired.version });
+                    
+                    // Real connection verification with the Rust backend
+                    // We repeatedly poll the backend to ensure the update was physically registered
+                    const checkInterval = setInterval(async () => {
+                      try {
+                        const info = await invoke<{version: string}>('get_app_info');
+                        if (info.version === updateRequired.version) {
+                          clearInterval(checkInterval);
+                          window.location.reload();
+                        }
+                      } catch (err) {
+                        console.error("Backend verification ping failed", err);
+                      }
+                    }, 500);
+
+                    // Failsafe timeout
+                    setTimeout(() => {
+                      clearInterval(checkInterval);
+                      setIsUpdating(false);
+                      console.error("Update verification timed out.");
+                    }, 5000);
+                  } catch (e) {
+                    console.error("Failed to update version:", e);
+                    setIsUpdating(false);
+                  }
+                }}
+                className="px-12 py-5 bg-white text-blue-800 hover:bg-white/90 hover:scale-105 active:scale-95 rounded-full font-bold shadow-[0_0_40px_rgba(255,255,255,0.3)] flex items-center justify-center gap-3 transition-all text-xl disabled:opacity-80 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:active:scale-100"
               >
-                Download Update
+                {isUpdating ? (
+                  <>
+                    <RefreshCw className="w-6 h-6 animate-spin" />
+                    Applying Update...
+                  </>
+                ) : (
+                  "Update Now"
+                )}
               </button>
             </motion.div>
           )}

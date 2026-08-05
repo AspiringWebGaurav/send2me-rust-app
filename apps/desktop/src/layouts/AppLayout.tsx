@@ -44,6 +44,20 @@ export function AppLayout() {
   });
 
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent F5 or Ctrl+R / Cmd+R
+      if (
+        e.key === 'F5' ||
+        (e.key === 'r' && (e.ctrlKey || e.metaKey))
+      ) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
     const activeOngoing = activeTransfers.filter(t => !['cancelled', 'failed', 'completed'].includes(t.status));
     if (activeOngoing.length > prevLength && location.pathname !== '/transfers') {
       navigate('/transfers');

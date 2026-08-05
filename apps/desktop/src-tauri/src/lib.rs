@@ -42,12 +42,37 @@ struct AppInfo {
 #[tauri::command]
 fn get_app_info(app: AppHandle) -> AppInfo {
     let package_info = app.package_info();
+    
+    // Check for an OS-level version override file to simulate updates robustly without localstorage
+    let mut path = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let suffix = std::env::var("SEND2ME_APP_DIR_SUFFIX").unwrap_or_default();
+    path.push(format!("send2me{}", suffix));
+    path.push("version_override.txt");
+    
+    let mut version = package_info.version.to_string();
+    if let Ok(override_ver) = std::fs::read_to_string(&path) {
+        if !override_ver.trim().is_empty() {
+            version = override_ver.trim().to_string();
+        }
+    }
+
     AppInfo {
         name: package_info.name.clone(),
-        version: package_info.version.to_string(),
+        version,
         os: std::env::consts::OS.to_string(),
         arch: std::env::consts::ARCH.to_string(),
     }
+}
+
+#[tauri::command]
+fn set_app_version_override(version: String) -> Result<(), String> {
+    let mut path = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let suffix = std::env::var("SEND2ME_APP_DIR_SUFFIX").unwrap_or_default();
+    path.push(format!("send2me{}", suffix));
+    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    path.push("version_override.txt");
+    
+    std::fs::write(&path, version).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -489,6 +514,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_app_info,
+            set_app_version_override,
             get_hardware_id,
             services::security_service::get_security_state,
             services::security_service::update_security_state,

@@ -145,21 +145,16 @@ fn get_hardware_id() -> String {
     #[cfg(target_os = "windows")]
     if hardware_id.is_empty() {
         use std::os::windows::process::CommandExt;
-        // Additional fallback: WMI for UUID
-        if let Ok(wmi_uid) = std::process::Command::new("wmic")
-            .args(&["csproduct", "get", "UUID"])
+        // Additional fallback: PowerShell Get-CimInstance for UUID (modern WMI replacement)
+        if let Ok(wmi_uid) = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", "Get-CimInstance -ClassName Win32_ComputerSystemProduct | Select-Object -ExpandProperty UUID"])
             .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output() 
         {
             let output_str = String::from_utf8_lossy(&wmi_uid.stdout);
-            let mut lines = output_str.lines();
-            if let Some(_) = lines.next() { // Skip header
-                if let Some(uuid) = lines.next() {
-                    let clean = uuid.trim();
-                    if !clean.is_empty() && clean != "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF" {
-                        hardware_id = clean.to_string();
-                    }
-                }
+            let clean = output_str.trim();
+            if !clean.is_empty() && clean != "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF" {
+                hardware_id = clean.to_string();
             }
         }
     }

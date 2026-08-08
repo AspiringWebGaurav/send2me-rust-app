@@ -1525,20 +1525,8 @@ fn has_enough_space(dir: &Path, needed: u64) -> bool {
 /// Given a desired path, return either it (if free) or `<stem> (N).<ext>` for the first free N.
 /// Atomically claims the free slot using `create_new` to avoid TOCTOU with concurrent transfers.
 pub fn find_free_path(desired: &Path) -> anyhow::Result<PathBuf> {
-    fn try_claim(p: &Path) -> std::io::Result<()> {
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(p) {
-            Ok(_) => {
-                let _ = std::fs::remove_file(p);
-                Ok(())
-            }
-            Err(e) => Err(e),
-        }
-    }
-
-    match try_claim(desired) {
-        Ok(()) => return Ok(desired.to_path_buf()),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(e) => anyhow::bail!("cannot create {}: {}", desired.display(), e),
+    if !desired.exists() {
+        return Ok(desired.to_path_buf());
     }
 
     let parent = desired
@@ -1556,10 +1544,8 @@ pub fn find_free_path(desired: &Path) -> anyhow::Result<PathBuf> {
             None => format!("{} ({})", stem, index),
         };
         let candidate = parent.join(name);
-        match try_claim(&candidate) {
-            Ok(()) => return Ok(candidate),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(e) => anyhow::bail!("cannot create {}: {}", candidate.display(), e),
+        if !candidate.exists() {
+            return Ok(candidate);
         }
     }
     anyhow::bail!("too many filename conflicts for {}", desired.display())

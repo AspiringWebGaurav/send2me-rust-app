@@ -60,33 +60,49 @@ export const DriveRoom = () => {
   }, []);
 
   const handleStartRoom = async () => {
-    await invoke('start_drive_room');
-    useDriveStore.getState().setOnline(true);
+    try {
+      await invoke('start_drive_room');
+      useDriveStore.getState().setOnline(true);
+    } catch (e: any) {
+      toast.error(`Failed to start drive room: ${e}`);
+    }
   };
 
   const handleCloseRoom = async () => {
-    await invoke('close_drive_room');
-    useDriveStore.getState().setOnline(false);
+    try {
+      await invoke('close_drive_room');
+      useDriveStore.getState().setOnline(false);
+    } catch (e: any) {
+      toast.error(`Failed to close drive room: ${e}`);
+    }
   };
 
   const handleAddFiles = async () => {
-    const selected = await open({
-      multiple: true,
-      directory: false,
-    });
-    
-    if (selected) {
-      const paths = Array.isArray(selected) ? selected : [selected];
-      for (const path of paths) {
-        const fileMeta: any = await invoke('add_virtual_file', { absolutePath: path });
-        useDriveStore.getState().addVirtualFile(fileMeta);
+    try {
+      const selected = await open({
+        multiple: true,
+        directory: false,
+      });
+      
+      if (selected) {
+        const paths = Array.isArray(selected) ? selected : [selected];
+        for (const path of paths) {
+          const fileMeta: any = await invoke('add_virtual_file', { absolutePath: path });
+          useDriveStore.getState().addVirtualFile(fileMeta);
+        }
       }
+    } catch (e: any) {
+      toast.error(`Failed to add file: ${e}`);
     }
   };
 
   const handleRemoveFile = async (id: string) => {
-    await invoke('remove_virtual_file', { fileId: id });
-    useDriveStore.getState().removeVirtualFile(id);
+    try {
+      await invoke('remove_virtual_file', { fileId: id });
+      useDriveStore.getState().removeVirtualFile(id);
+    } catch (e: any) {
+      toast.error(`Failed to remove file: ${e}`);
+    }
   };
 
   const approveRequest = async (id: string) => {

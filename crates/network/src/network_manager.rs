@@ -178,10 +178,14 @@ impl NetworkManager {
         
         let client = self.pkarr_client.clone();
         
-        // Spawn blocking because pkarr 2.0 client is synchronous
-        let resolve_result = tokio::task::spawn_blocking(move || {
-            client.resolve(&pubkey)
-        }).await?;
+        // Spawn blocking because pkarr 2.0 client is synchronous, wrapped in a 10s timeout
+        let resolve_result = match tokio::time::timeout(
+            tokio::time::Duration::from_secs(10),
+            tokio::task::spawn_blocking(move || client.resolve(&pubkey))
+        ).await {
+            Ok(join_res) => join_res?,
+            Err(_) => return Err(anyhow::anyhow!("Global DHT resolution timed out after 10 seconds")),
+        };
         
         match resolve_result {
             Ok(Some(packet)) => {

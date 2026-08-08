@@ -486,9 +486,9 @@ export function FolderSync() {
             <Button 
               variant="danger" 
               className="flex-1 shadow-lg shadow-danger/20 hover:shadow-danger/40"
-              onClick={() => {
+              onClick={async () => {
                 if (deviceToUnbind) {
-                  removeBondedDevice(deviceToUnbind);
+                  await removeBondedDevice(deviceToUnbind);
                   setDeviceToUnbind(null);
                 }
               }}

@@ -97,6 +97,8 @@ export const useTransferStore = create<TransferState>((set, get) => ({
     }
   },
   initListeners: async () => {
+    if (listenersDisposer) return;
+
     const sendOSNotification = async (title: string, body: string) => {
       const settings = useSettingsStore.getState().settings;
       if (!settings?.notificationsEnabled) return;

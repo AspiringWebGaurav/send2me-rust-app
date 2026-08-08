@@ -112,6 +112,20 @@ impl FolderWatcher {
                     }
                 };
 
+fn is_system_temp_file(path: &Path) -> bool {
+    let name = match path.file_name().and_then(|n| n.to_str()) {
+        Some(n) => n,
+        None => return false,
+    };
+    name.contains(".sync.tmp")
+        || name.starts_with("unconfirmed_transfer_")
+        || name.ends_with(".send2me.secret")
+        || name.starts_with("~$")
+        || name.eq_ignore_ascii_case("desktop.ini")
+        || name.eq_ignore_ascii_case("thumbs.db")
+        || name.eq_ignore_ascii_case(".ds_store")
+}
+
                 tokio::select! {
                     res_opt = rx.recv() => {
                         match res_opt {
@@ -121,12 +135,16 @@ impl FolderWatcher {
                                         if event.paths.len() == 2 {
                                             let old_path = event.paths[0].clone();
                                             let new_path = event.paths[1].clone();
-                                            if !cache.is_ignored(&old_path).await && !cache.is_ignored(&new_path).await {
+                                            if !is_system_temp_file(&old_path)
+                                                && !is_system_temp_file(&new_path)
+                                                && !cache.is_ignored(&old_path).await
+                                                && !cache.is_ignored(&new_path).await
+                                            {
                                                 let _ = event_tx.send(SyncEvent::Renamed(old_path, new_path)).await;
                                             }
                                         } else {
                                             for path in event.paths {
-                                                if !cache.is_ignored(&path).await {
+                                                if !is_system_temp_file(&path) && !cache.is_ignored(&path).await {
                                                     pending_events.insert(path, (Instant::now(), 0));
                                                 }
                                             }
@@ -134,14 +152,14 @@ impl FolderWatcher {
                                     }
                                     notify::EventKind::Create(_) | notify::EventKind::Modify(_) => {
                                         for path in event.paths {
-                                            if !cache.is_ignored(&path).await {
+                                            if !is_system_temp_file(&path) && !cache.is_ignored(&path).await {
                                                 pending_events.insert(path, (Instant::now(), 0));
                                             }
                                         }
                                     }
                                     notify::EventKind::Remove(_) => {
                                         for path in event.paths {
-                                            if !cache.is_ignored(&path).await {
+                                            if !is_system_temp_file(&path) && !cache.is_ignored(&path).await {
                                                 let _ = event_tx.send(SyncEvent::Deleted(path)).await;
                                             }
                                         }

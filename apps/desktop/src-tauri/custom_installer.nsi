@@ -45,7 +45,7 @@ ${StrLoc}
 !define HEADERIMAGE ""
 !define UNINSTALLERICON ""
 !define UNINSTALLERHEADERIMAGE ""
-!define MAINBINARYNAME "desktop"
+!define MAINBINARYNAME "{{main_binary_name}}"
 !define MAINBINARYSRCPATH "{{main_binary_path}}"
 !define BUNDLEID "com.send2me.app"
 !define COPYRIGHT "Copyright 2026 Gaurav"

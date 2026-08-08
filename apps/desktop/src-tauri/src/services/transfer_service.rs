@@ -302,6 +302,8 @@ pub async fn start_transfer(
             let progress_consumer_for_engine = progress_consumer_arc.clone();
 
             let join_handle = tokio::spawn(async move {
+                let _map_guard = TransferMapGuard { id: error_transfer_id.clone() };
+
                 let engine_result = transfer::stream::TransferStream::send_file_parallel(
                     &connection_clone,
                     transfer_id_engine.clone(),
@@ -339,16 +341,6 @@ pub async fn start_transfer(
                 if let Some(pc) = progress_consumer_for_engine.lock().await.take() {
                     let _ = pc.await;
                 }
-
-                // Belt-and-braces map cleanup on the engine-side path.
-                {
-                    let mut handles = CANCEL_HANDLES.lock().await;
-                    handles.remove(&error_transfer_id);
-                }
-                {
-                    let mut pauses = PAUSE_FLAGS.lock().await;
-                    pauses.remove(&error_transfer_id);
-                }
             });
 
             // Store the handle for cancellation.
@@ -380,6 +372,22 @@ use iroh::net::endpoint::Connection;
 
 type CancelHandleMap = std::collections::HashMap<String, (JoinHandle<()>, Connection)>;
 type PauseFlagMap = std::collections::HashMap<String, (std::sync::Arc<std::sync::atomic::AtomicBool>, Connection)>;
+
+struct TransferMapGuard {
+    id: String,
+}
+
+impl Drop for TransferMapGuard {
+    fn drop(&mut self) {
+        let id = self.id.clone();
+        tauri::async_runtime::spawn(async move {
+            let mut handles = CANCEL_HANDLES.lock().await;
+            handles.remove(&id);
+            let mut pauses = PAUSE_FLAGS.lock().await;
+            pauses.remove(&id);
+        });
+    }
+}
 
 static CANCEL_HANDLES: LazyLock<tokio::sync::Mutex<CancelHandleMap>> = LazyLock::new(|| tokio::sync::Mutex::new(std::collections::HashMap::new()));
 static PAUSE_FLAGS: LazyLock<tokio::sync::Mutex<PauseFlagMap>> = LazyLock::new(|| tokio::sync::Mutex::new(std::collections::HashMap::new()));

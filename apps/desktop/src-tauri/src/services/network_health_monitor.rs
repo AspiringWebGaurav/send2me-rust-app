@@ -8,20 +8,22 @@ pub fn ensure_sync_folder_exists(dl_dir: &std::path::Path) -> bool {
         let _ = std::fs::create_dir_all(dl_dir);
         #[cfg(target_os = "windows")]
         {
-            use std::os::windows::process::CommandExt;
+            use std::os::windows::ffi::OsStrExt;
+            use windows_sys::Win32::Storage::FileSystem::{
+                SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_SYSTEM,
+            };
+
             let desktop_ini_path = dl_dir.join("desktop.ini");
             let ini_content = "[.ShellClassInfo]\r\nIconResource=C:\\Windows\\System32\\imageres.dll,-104\r\n";
             let _ = std::fs::write(&desktop_ini_path, ini_content);
-            
-            let _ = std::process::Command::new("attrib")
-                .args(["+h", "+s", desktop_ini_path.to_str().unwrap_or_default()])
-                .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                .status();
-                
-            let _ = std::process::Command::new("attrib")
-                .args(["+r", dl_dir.to_str().unwrap_or_default()])
-                .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                .status();
+
+            let ini_w: Vec<u16> = desktop_ini_path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+            let dir_w: Vec<u16> = dl_dir.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+
+            unsafe {
+                SetFileAttributesW(ini_w.as_ptr(), FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM);
+                SetFileAttributesW(dir_w.as_ptr(), FILE_ATTRIBUTE_READONLY);
+            }
         }
         return true;
     }

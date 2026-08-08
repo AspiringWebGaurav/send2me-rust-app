@@ -4,7 +4,7 @@ use transfer::transfer_manager::{TransferRegistry, TransferStatus};
 use crate::services::settings_service::AppSettings;
 
 const TMP_SUFFIX: &str = ".send2me.secret";
-const EXPIRY_SECS: u64 = 5 * 60; // 5 minutes; the CleanupGuard normally deletes within seconds
+const EXPIRY_SECS: u64 = 30 * 60; // 30 minutes safe threshold for orphaned temp cleanup
 const SWEEP_INTERVAL_SECS: u64 = 5 * 60; // 5 minutes
 
 pub fn spawn(

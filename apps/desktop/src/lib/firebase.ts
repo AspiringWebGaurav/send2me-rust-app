@@ -11,13 +11,13 @@ import {
 import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 
 const firebaseConfig = {
- apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
- authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
- projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
- databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
- storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
- messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
- appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyDpiQBC2JOtqUMEwH7SGRCFFZi6DGFJONA',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'send2me-f4f3b.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'send2me-f4f3b',
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || 'https://send2me-f4f3b-default-rtdb.asia-southeast1.firebasedatabase.app',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'send2me-f4f3b.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '1032278197563',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:1032278197563:web:dbc4a7abc5c62e1c09231e',
 };
 
 const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];

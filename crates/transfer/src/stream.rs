@@ -258,7 +258,8 @@ impl TransferStream {
                     }
                     let mut file = options.open(&file_path).await?;
                     file.seek(SeekFrom::Start(start_offset)).await?;
-                    let mut buffer = vec![0u8; Self::READ_BUFFER_SIZE];
+                    let buffer_size = std::cmp::min(Self::READ_BUFFER_SIZE, (size as usize).max(64 * 1024));
+                    let mut buffer = vec![0u8; buffer_size];
 
                     while bytes_read < size {
                         // Pause loop — respects cooperative pause.

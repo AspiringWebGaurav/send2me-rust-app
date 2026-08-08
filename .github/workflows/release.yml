@@ -114,8 +114,8 @@ jobs:
           }
 
           # 3. Portable Binary & ZIP
-          $bin = "target/x86_64-pc-windows-msvc/release/desktop.exe"
-          if (-not (Test-Path $bin)) { $bin = "target/release/desktop.exe" }
+          $bin = "target/x86_64-pc-windows-msvc/release/send2me.exe"
+          if (-not (Test-Path $bin)) { $bin = "target/release/send2me.exe" }
           if (Test-Path $bin) {
               $portable = Join-Path $stageDir "Send2Me_${version}_x64-portable.exe"
               Copy-Item -Path $bin -Destination $portable -Force
@@ -250,8 +250,8 @@ jobs:
           fi
 
           # 3. Binary tar.gz
-          if [ -f "target/x86_64-unknown-linux-gnu/release/desktop" ]; then
-            tar -czf "linux_assets/Send2Me_${VERSION}_Linux-x86_64.tar.gz" -C target/x86_64-unknown-linux-gnu/release desktop
+          if [ -f "target/x86_64-unknown-linux-gnu/release/send2me" ]; then
+            tar -czf "linux_assets/Send2Me_${VERSION}_Linux-x86_64.tar.gz" -C target/x86_64-unknown-linux-gnu/release send2me
           fi
 
           ls -lh linux_assets/

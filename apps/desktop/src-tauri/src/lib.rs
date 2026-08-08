@@ -284,7 +284,7 @@ fn check_firewall_permission() -> bool {
         use std::os::windows::process::CommandExt;
         let exe_name = std::env::current_exe()
             .map(|p| p.file_name().unwrap_or_default().to_string_lossy().into_owned())
-            .unwrap_or_else(|_| "desktop.exe".to_string());
+            .unwrap_or_else(|_| "send2me.exe".to_string());
             
         let output = std::process::Command::new("netsh")
             .args(["advfirewall", "firewall", "show", "rule", &format!("name={}", exe_name)])
@@ -388,10 +388,10 @@ pub fn run() {
                 }
             });
 
-            let network_manager = match rx.recv() {
+            let network_manager = match rx.recv_timeout(std::time::Duration::from_secs(15)) {
                 Ok(Ok(nm)) => Arc::new(nm),
                 Ok(Err(e)) => return Err(format!("Failed to start network manager: {}", e).into()),
-                Err(e) => return Err(format!("Network manager task failed: {}", e).into()),
+                Err(_) => return Err("Network manager startup timed out after 15 seconds".into()),
             };
             let peer_registry = Arc::new(RwLock::new(std::collections::HashMap::new()));
             let transfer_manager = Arc::new(TransferManager::new());

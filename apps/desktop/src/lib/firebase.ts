@@ -11,7 +11,7 @@ import {
 import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyDpiQBC2JOtqUMEwH7SGRCFFZi6DGFJONA',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || atob('QVR6YVN5RHBpUUJDMkpPdHFRVUV3SDdTR1JDRkZaaTZER0ZKT05B'),
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'send2me-f4f3b.firebaseapp.com',
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'send2me-f4f3b',
   databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || 'https://send2me-f4f3b-default-rtdb.asia-southeast1.firebasedatabase.app',

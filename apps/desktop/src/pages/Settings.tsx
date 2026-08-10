@@ -1,12 +1,13 @@
 import { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Settings as SettingsIcon, ChevronDown } from "lucide-react";
+import { Settings as SettingsIcon, ChevronDown, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent } from "../components/ui/Card";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useAppStore } from "../stores/useAppStore";
 import { useNotificationStore } from "../stores/useNotificationStore";
 import { open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import { cn } from "../lib/utils";
 
 interface ToggleProps {
@@ -92,6 +93,25 @@ export function Settings() {
       }, 100);
     }
   }, [settings, location.state?.highlight]);
+
+  const [isUninstalling, setIsUninstalling] = useState(false);
+
+  const handleUninstall = async () => {
+    if (!window.confirm("Are you sure you want to uninstall Send2Me? This will close the application and launch the system uninstaller.")) {
+      return;
+    }
+    setIsUninstalling(true);
+    try {
+      await invoke("uninstall_application");
+    } catch (err) {
+      useNotificationStore.getState().addNotification({
+        type: 'error',
+        title: 'Uninstall Action',
+        message: err instanceof Error ? err.message : String(err),
+      });
+      setIsUninstalling(false);
+    }
+  };
 
   const handleSelectFolder = async () => {
     if (!settings) return;
@@ -332,6 +352,33 @@ export function Settings() {
                 </motion.div>
               )}
             </AnimatePresence>
+          </motion.section>
+
+          <motion.section
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+            className="space-y-3"
+          >
+            <h3 className="text-xs font-semibold tracking-widest uppercase text-danger/80 px-1">Application Management</h3>
+            <Card className="border-danger/30 bg-danger/5">
+              <CardContent className="p-6 space-y-5 pt-6">
+                <Row
+                  title="Uninstall Send2Me"
+                  description="Completely remove Send2Me, desktop shortcuts, and firewall rules from your computer."
+                  emphasis
+                >
+                  <button
+                    onClick={handleUninstall}
+                    disabled={isUninstalling}
+                    className="flex items-center gap-2 bg-danger text-danger-foreground hover:bg-danger/90 border-none rounded-xl px-4 py-2 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-danger cursor-pointer transition-all active:scale-[0.97] shadow-sm disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {isUninstalling ? "Launching Uninstaller..." : "Uninstall Application"}
+                  </button>
+                </Row>
+              </CardContent>
+            </Card>
           </motion.section>
 
           <section className="pt-4 pb-8">

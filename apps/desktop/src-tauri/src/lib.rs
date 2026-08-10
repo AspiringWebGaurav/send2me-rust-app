@@ -366,6 +366,71 @@ fn open_firewall_settings() {
     }
 }
 
+#[tauri::command]
+fn uninstall_application() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        let exe_dir = std::env::current_exe()
+            .map_err(|e| format!("Failed to locate application directory: {}", e))?
+            .parent()
+            .ok_or_else(|| "Failed to find parent application directory".to_string())?
+            .to_path_buf();
+
+        let uninstaller_path = exe_dir.join("uninstall.exe");
+
+        if uninstaller_path.exists() {
+            let uninst_str = uninstaller_path.to_string_lossy();
+            let _ = std::process::Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    &format!("Start-Process -FilePath '{}'", uninst_str),
+                ])
+                .creation_flags(0x08000000)
+                .spawn();
+
+            std::process::exit(0);
+        }
+
+        // Fallback: check Windows Registry HKCU uninstall key
+        let hkcu_cmd = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                "(Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Send2Me' -ErrorAction SilentlyContinue).UninstallString",
+            ])
+            .creation_flags(0x08000000)
+            .output();
+
+        if let Ok(out) = hkcu_cmd {
+            let uninst_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !uninst_str.is_empty() {
+                let _ = std::process::Command::new("powershell")
+                    .args([
+                        "-NoProfile",
+                        "-WindowStyle",
+                        "Hidden",
+                        "-Command",
+                        &format!("Start-Process -FilePath '{}'", uninst_str),
+                    ])
+                    .creation_flags(0x08000000)
+                    .spawn();
+
+                std::process::exit(0);
+            }
+        }
+
+        Err("No uninstaller found. If running Send2Me Portable, simply delete the portable executable file.".to_string())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Uninstall option is currently only supported on Windows.".to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // START ANTI-DEBUGGER DAEMON
@@ -641,6 +706,7 @@ pub fn run() {
             check_firewall_permission,
             request_firewall_permission,
             open_firewall_settings,
+            uninstall_application,
             get_hardware_snapshot,
             send_bind_request,
             respond_to_bind_request,

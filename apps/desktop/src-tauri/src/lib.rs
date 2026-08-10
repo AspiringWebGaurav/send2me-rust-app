@@ -282,40 +282,75 @@ fn check_firewall_permission() -> bool {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        let exe_name = std::env::current_exe()
-            .map(|p| p.file_name().unwrap_or_default().to_string_lossy().into_owned())
-            .unwrap_or_else(|_| "send2me.exe".to_string());
-            
-        let output = std::process::Command::new("netsh")
-            .args(["advfirewall", "firewall", "show", "rule", &format!("name={}", exe_name)])
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .output();
-            
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if stdout.contains("Action:                               Allow") {
-                return true;
+        let exe_path = std::env::current_exe().unwrap_or_default();
+        let exe_name = exe_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+
+        let rules_to_check = [
+            format!("name={}", exe_name),
+            "name=Send2Me".to_string(),
+            "name=Send2Me (In)".to_string(),
+            "name=Send2Me (Out)".to_string(),
+        ];
+
+        for rule in &rules_to_check {
+            let output = std::process::Command::new("netsh")
+                .args(["advfirewall", "firewall", "show", "rule", rule])
+                .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                .output();
+
+            if let Ok(output) = output {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if stdout.contains("Action:                               Allow")
+                    || stdout.contains("Action:                                allow")
+                    || stdout.contains("Allow")
+                {
+                    return true;
+                }
             }
         }
-        
-        // Check "Send2Me" as well just in case
-        let output_alt = std::process::Command::new("netsh")
-            .args(["advfirewall", "firewall", "show", "rule", "name=Send2Me"])
-            .creation_flags(0x08000000)
-            .output();
-            
-        if let Ok(output) = output_alt {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if stdout.contains("Action:                               Allow") {
-                return true;
-            }
-        }
-        
+
         false
     }
     #[cfg(not(target_os = "windows"))]
     {
         true
+    }
+}
+
+#[tauri::command]
+fn request_firewall_permission() -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        let exe_path = std::env::current_exe()
+            .map_err(|e| format!("Failed to get current binary path: {}", e))?;
+        let exe_path_str = exe_path.to_string_lossy();
+
+        let ps_script = format!(
+            "$exe = '{}'; \
+             Start-Process netsh -ArgumentList \"advfirewall firewall add rule name=`\"Send2Me (In)`\" dir=in action=allow program=`\"$exe`\" enable=yes profile=any\" -Verb RunAs -Wait; \
+             Start-Process netsh -ArgumentList \"advfirewall firewall add rule name=`\"Send2Me (Out)`\" dir=out action=allow program=`\"$exe`\" enable=yes profile=any\" -Verb RunAs -Wait; \
+             Start-Process netsh -ArgumentList \"advfirewall firewall add rule name=`\"Send2Me`\" dir=in action=allow program=`\"$exe`\" enable=yes profile=any\" -Verb RunAs -Wait;",
+            exe_path_str
+        );
+
+        let output = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &ps_script])
+            .creation_flags(0x08000000)
+            .output();
+
+        match output {
+            Ok(_) => Ok(check_firewall_permission()),
+            Err(e) => Err(format!("Failed to trigger elevation: {}", e)),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(true)
     }
 }
 
@@ -604,6 +639,7 @@ pub fn run() {
             get_peers,
             respond_to_transfer,
             check_firewall_permission,
+            request_firewall_permission,
             open_firewall_settings,
             get_hardware_snapshot,
             send_bind_request,

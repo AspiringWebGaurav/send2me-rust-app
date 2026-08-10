@@ -43,6 +43,18 @@ export function PermissionOverlay() {
     };
   }, []);
 
+  const requestPermission = async () => {
+    setIsChecking(true);
+    try {
+      const allowed = await invoke<boolean>("request_firewall_permission");
+      setHasPermission(allowed);
+    } catch (err) {
+      console.error("Failed to request firewall permission:", err);
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
   const openSettings = async () => {
     setIsChecking(true);
     try {
@@ -100,34 +112,42 @@ export function PermissionOverlay() {
               <ul className="text-xs text-muted-foreground leading-relaxed space-y-2.5">
                 <li className="flex gap-2">
                   <strong className="text-foreground shrink-0">Step 1:</strong>
-                  <span>Check if there's a Windows Security prompt on your taskbar. If so, click <strong className="text-foreground">"Allow access"</strong>.</span>
+                  <span>Click <strong className="text-foreground">"Grant Access (UAC)"</strong> below to automatically add Firewall exceptions.</span>
                 </li>
                 <li className="flex gap-2">
                   <strong className="text-foreground shrink-0">Step 2:</strong>
-                  <span>If you don't see any prompt, try <strong className="text-foreground">closing and restarting the app</strong>.</span>
+                  <span>Check if there's a Windows Security prompt on your taskbar and click <strong className="text-foreground">"Allow access"</strong>.</span>
                 </li>
                 <li className="flex gap-2">
                   <strong className="text-foreground shrink-0">Step 3:</strong>
-                  <span>If it's still blocked, click the button below to manually open Windows Firewall settings.</span>
+                  <span>If it's still blocked, click <strong className="text-foreground">"Open Settings"</strong> to inspect Windows Firewall settings manually.</span>
                 </li>
               </ul>
             </div>
 
             <div className="w-full max-w-md flex flex-col sm:flex-row gap-2.5">
               <button
+                onClick={requestPermission}
+                disabled={isChecking}
+                className="flex-[1.5] h-11 flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl font-semibold text-sm transition-all duration-200 hover:-translate-y-px shadow-[0_4px_14px_hsl(var(--primary)/0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 active:scale-[0.97] disabled:opacity-60"
+              >
+                <ShieldAlert className="w-4 h-4" />
+                Grant Access (UAC)
+              </button>
+              <button
                 onClick={openSettings}
                 disabled={isChecking}
                 className="flex-1 h-11 flex items-center justify-center gap-2 bg-secondary/60 hover:bg-secondary text-foreground border border-border/50 rounded-xl font-semibold text-sm transition-all duration-200 hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] disabled:opacity-60"
               >
                 <Settings className="w-4 h-4 text-muted-foreground" />
-                Open Settings
+                Settings
               </button>
               <button
                 onClick={closeApp}
-                className="flex-1 h-11 flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl font-semibold text-sm transition-all duration-200 hover:-translate-y-px shadow-[0_4px_14px_hsl(var(--primary)/0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 active:scale-[0.97]"
+                className="flex-1 h-11 flex items-center justify-center gap-2 bg-secondary/30 hover:bg-secondary text-foreground border border-border/30 rounded-xl font-semibold text-sm transition-all duration-200 hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97]"
               >
-                <Power className="w-4 h-4" />
-                Close App
+                <Power className="w-4 h-4 text-muted-foreground" />
+                Exit
               </button>
             </div>
           </motion.div>

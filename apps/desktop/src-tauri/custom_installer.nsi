@@ -1051,8 +1051,10 @@ Section Install
   ; Add Firewall Exception if permitted
   ${If} $FirewallAllowed == "1"
     DetailPrint "Adding Firewall Exception..."
+    nsExec::ExecToLog 'powershell -WindowStyle Hidden -Command "Start-Process netsh -ArgumentList ''advfirewall firewall add rule name=\"Send2Me (In)\" dir=in action=allow program=\"$INSTDIR\${MAINBINARYNAME}.exe\" enable=yes profile=any'' -Verb RunAs -Wait; Start-Process netsh -ArgumentList ''advfirewall firewall add rule name=\"Send2Me (Out)\" dir=out action=allow program=\"$INSTDIR\${MAINBINARYNAME}.exe\" enable=yes profile=any'' -Verb RunAs -Wait; Start-Process netsh -ArgumentList ''advfirewall firewall add rule name=\"Send2Me\" dir=in action=allow program=\"$INSTDIR\${MAINBINARYNAME}.exe\" enable=yes profile=any'' -Verb RunAs -Wait"'
     nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Send2Me (In)" dir=in action=allow program="$INSTDIR\${MAINBINARYNAME}.exe" enable=yes profile=any'
     nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Send2Me (Out)" dir=out action=allow program="$INSTDIR\${MAINBINARYNAME}.exe" enable=yes profile=any'
+    nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Send2Me" dir=in action=allow program="$INSTDIR\${MAINBINARYNAME}.exe" enable=yes profile=any'
   ${EndIf}
 
   ; Auto close this page for passive mode
@@ -1125,6 +1127,7 @@ Section Uninstall
   DetailPrint "Removing Firewall Exception..."
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Send2Me (In)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Send2Me (Out)"'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Send2Me"'
 
   RMDir "$INSTDIR"
 

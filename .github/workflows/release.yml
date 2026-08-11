@@ -345,6 +345,12 @@ jobs:
           # Delete any existing release for this tag so we get a clean publish
           gh release delete "$TAG" --yes 2>/dev/null || echo "No existing release to delete."
 
+      - name: Generate Release Notes
+        run: |
+          VERSION="${{ steps.consolidate.outputs.VERSION }}"
+          node .github/scripts/generate-release-notes.js "$VERSION"
+          cat RELEASE_NOTES.md
+
       - name: Publish Public GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -355,45 +361,4 @@ jobs:
           gh release create "$TAG" \
             all_release_assets/* \
             --title "Send2Me v${VERSION} (All Devices)" \
-            --notes "Fast, 100% Private, Direct File Transfer & Sync Between Devices — Zero Cloud Required.
-
----
-
-### ⚡ Quick Start Guide (3 Easy Steps)
-
-| 1️⃣ Download | 2️⃣ Install | 3️⃣ Start Sharing |
-| :---: | :---: | :---: |
-| Click the download link for your computer below | Double-click the downloaded file to run setup | Pick files and send them directly to any device! |
-
----
-
-### 💻 Downloads by Computer Type
-
-#### 🪟 Windows (10 / 11)
-- 👉 **Send2Me_${VERSION}_x64-setup.exe** — **⭐ RECOMMENDED** *(Standard setup wizard with start menu shortcuts)*
-
-<details>
-<summary>🛠️ Advanced Windows Options (MSI, Portable)</summary>
-
-- **Enterprise MSI Installer:** \`Send2Me_${VERSION}_x64.msi\` *(For IT deployment)*
-- **Portable Executable:** \`Send2Me_${VERSION}_x64-portable.exe\` *(No install required)*
-- **Portable ZIP Archive:** \`Send2Me_${VERSION}_windows-x64.zip\`
-</details>
-
-#### 🍎 Mac (macOS)
-- 🍏 **Send2Me_${VERSION}_macOS-arm64.dmg** — **Apple Silicon (M1 / M2 / M3 / M4)**
-- 💻 **Send2Me_${VERSION}_macOS-x86_64.dmg** — **Intel Macs**
-
-#### 🐧 Linux (Ubuntu, Debian, Fedora, Arch)
-- 🚀 **Send2Me_${VERSION}_Linux-x86_64.AppImage** — **Universal Run File** *(Double-click to run)*
-- 📦 **Send2Me_${VERSION}_Linux-x86_64.deb** — **Debian / Ubuntu Package**
-
----
-
-<details>
-<summary><b>🔒 Cryptographic Checksums & Technical Verification</b></summary>
-
-Verify SHA-256 package integrity against **SHA256SUMS.txt** attached in Assets below:
-- **Windows PowerShell:** \`Get-FileHash -Algorithm SHA256 .\\Send2Me_${VERSION}_x64-setup.exe\`
-- **Linux / macOS:** \`sha256sum Send2Me_${VERSION}_Linux-x86_64.AppImage\`
-</details>"
+            --notes-file RELEASE_NOTES.md

@@ -49,12 +49,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Node.js (v22 LTS)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -125,7 +125,7 @@ jobs:
           Get-ChildItem -Path $stageDir | ForEach-Object { Write-Host "Staged Windows Asset: $($_.Name) ($($_.Length) bytes)" }
 
       - name: Upload Windows Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-assets
           path: windows_assets/*
@@ -139,10 +139,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js (v22 LTS)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -188,7 +188,7 @@ jobs:
           ls -lh macos_assets/
 
       - name: Upload macOS Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-assets
           path: macos_assets/*
@@ -202,10 +202,10 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js (v22 LTS)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -257,7 +257,7 @@ jobs:
           ls -lh linux_assets/
 
       - name: Upload Linux Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-assets
           path: linux_assets/*
@@ -268,24 +268,25 @@ jobs:
   # =========================================================================
   publish-release:
     name: "Publish Multi-Platform Release"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [build-windows, build-macos, build-linux]
     if: always() && (needs.build-windows.result == 'success' || needs.build-macos.result == 'success' || needs.build-linux.result == 'success')
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
       - name: Download all platform artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: staged_downloads
+          merge-multiple: true
 
       - name: Consolidate Assets & Generate Cryptographic SHA256SUMS
         id: consolidate
@@ -319,7 +320,7 @@ jobs:
           fi
 
       - name: Upload Unified Workflow Run Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Send2Me-All-Devices-Release-${{ steps.consolidate.outputs.VERSION }}
           path: all_release_assets/*

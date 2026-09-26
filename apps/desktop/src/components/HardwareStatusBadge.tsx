@@ -49,7 +49,7 @@ export function HardwareStatusBadge() {
         )}
       >
         <Cpu className="w-3.5 h-3.5" />
-        {current ? (
+        {typeof current?.cpuPercent === 'number' ? (
           <span>{current.cpuPercent.toFixed(0)}%</span>
         ) : (
           <span className="opacity-50">—</span>
@@ -127,11 +127,12 @@ function Meter({
   value: number;
   sev: LagSeverity;
 }) {
+  const safeVal = typeof value === 'number' && !isNaN(value) ? value : 0;
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-[11px]">
         <span className="text-muted-foreground font-medium">{label}</span>
-        <span className="font-mono font-semibold tabular-nums">{value.toFixed(1)}%</span>
+        <span className="font-mono font-semibold tabular-nums">{safeVal.toFixed(1)}%</span>
       </div>
       <div className="h-1 rounded-full bg-secondary/70 overflow-hidden">
         <div
@@ -141,7 +142,7 @@ function Meter({
             sev === "warning" && "bg-warning",
             sev === "critical" && "bg-danger"
           )}
-          style={{ width: `${Math.min(value, 100)}%` }}
+          style={{ width: `${Math.min(safeVal, 100)}%` }}
         />
       </div>
     </div>

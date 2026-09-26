@@ -14,7 +14,7 @@ export function usePeersPolling(intervalMs: number = 3000): {
 
   const refresh = () => {
     invoke<PeerBeacon[]>("get_peers")
-      .then((p) => setPeers(p))
+      .then((p) => setPeers(Array.isArray(p) ? p : []))
       .catch(() => { /* network polling — failures are transient, no toast needed */ });
   };
 

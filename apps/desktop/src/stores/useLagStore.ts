@@ -46,7 +46,9 @@ export const useLagStore = create<LagState>((set, get) => ({
     // Prime with a snapshot so the UI shows real numbers immediately.
     try {
       const snap = await invoke<LagEvent>('get_hardware_snapshot');
-      set({ current: snap });
+      if (snap && typeof snap.cpuPercent === 'number') {
+        set({ current: snap });
+      }
     } catch (e) {
       // Non-fatal — the monitor will backfill within a couple of seconds.
       console.warn('Lag snapshot failed:', e);

@@ -139,3 +139,9 @@ trainplex/
 coverage/
 .nyc_output/
 *.lcov
+
+# ─── Testing & Playwright Outputs ───────────────────────────────────────────
+playwright-report/
+test-results/
+playwright/
+.playwright/

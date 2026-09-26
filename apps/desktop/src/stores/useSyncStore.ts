@@ -76,7 +76,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   fetchBondedDevices: async () => {
     try {
       const devices = await invoke<BondedDevice[]>('get_bonded_devices');
-      set({ bondedDevices: devices });
+      set({ bondedDevices: Array.isArray(devices) ? devices : [] });
     } catch (e) {
       console.error("Failed to fetch bonded devices:", e);
     }

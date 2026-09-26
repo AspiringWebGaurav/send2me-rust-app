@@ -81,14 +81,14 @@ export function Footer() {
 
       <div className="items-center gap-3 text-muted-foreground/70 hidden md:flex shrink-0">
         <button
-          onClick={() => openUrl('https://www.send2me.site/terms')}
+          onClick={() => openUrl('https://send2me.eu.cc/terms')}
           className="hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
         >
           Terms
         </button>
         <div className="w-px h-3 bg-border/70"></div>
         <button
-          onClick={() => openUrl('https://www.send2me.site/privacy')}
+          onClick={() => openUrl('https://send2me.eu.cc/privacy')}
           className="hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
         >
           Privacy

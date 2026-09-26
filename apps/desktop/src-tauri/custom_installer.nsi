@@ -35,9 +35,9 @@ ${StrLoc}
 
 !define MANUFACTURER "Gaurav"
 !define PRODUCTNAME "Send2Me"
-!define VERSION "0.1.0"
-!define VERSIONWITHBUILD "0.1.0.0"
-!define HOMEPAGE "https://www.send2me.site"
+!define VERSION "0.1.8"
+!define VERSIONWITHBUILD "0.1.8.0"
+!define HOMEPAGE "https://send2me.eu.cc"
 !define INSTALLMODE "currentUser"
 !define LICENSE "{{license}}"
 !define INSTALLERICON "{{installer_icon}}"
@@ -129,6 +129,10 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
   !define MULTIUSER_INSTALLMODE_FUNCTION RestorePreviousInstallLocation
   !define MULTIUSER_EXECUTIONLEVEL Highest
   !include MultiUser.nsh
+!else if "${INSTALLMODE}" == "perMachine"
+  !define SHCTX HKLM
+!else
+  !define SHCTX HKCU
 !endif
 
 ; Installer icon
@@ -191,7 +195,7 @@ Function ConsentPageShow
     Abort
   ${EndIf}
 
-  !insertmacro MUI_HEADER_TEXT "Welcome to Send2Me (www.send2me.site)" "Developed by Gaurav Patil. Please review our data and liability terms."
+  !insertmacro MUI_HEADER_TEXT "Welcome to Send2Me (send2me.eu.cc)" "Developed by Gaurav Patil. Please review our data and liability terms."
 
   nsDialogs::Create 1018
   Pop $ConsentDialog
@@ -323,12 +327,12 @@ Function TermsPrivacyPageShow
   Pop $0
   SendMessage $0 ${WM_SETFONT} $3 1
   
-  ${NSD_CreateLink} 0 28u 100% 14u "➔ View Terms of Service (www.send2me.site/terms)"
+  ${NSD_CreateLink} 0 28u 100% 14u "➔ View Terms of Service (send2me.eu.cc/terms)"
   Pop $LinkTerms
   SendMessage $LinkTerms ${WM_SETFONT} $2 1
   ${NSD_OnClick} $LinkTerms LinkTermsClick
   
-  ${NSD_CreateLink} 0 46u 100% 14u "➔ View Privacy Policy (www.send2me.site/privacy)"
+  ${NSD_CreateLink} 0 46u 100% 14u "➔ View Privacy Policy (send2me.eu.cc/privacy)"
   Pop $LinkPrivacy
   SendMessage $LinkPrivacy ${WM_SETFONT} $2 1
   ${NSD_OnClick} $LinkPrivacy LinkPrivacyClick
@@ -350,12 +354,12 @@ FunctionEnd
 
 Function LinkTermsClick
   Pop $0
-  ExecShell "open" "https://www.send2me.site/terms"
+  ExecShell "open" "https://send2me.eu.cc/terms"
 FunctionEnd
 
 Function LinkPrivacyClick
   Pop $0
-  ExecShell "open" "https://www.send2me.site/privacy"
+  ExecShell "open" "https://send2me.eu.cc/privacy"
 FunctionEnd
 
 Function LinkDevClick
@@ -771,6 +775,9 @@ FunctionEnd
   !include ".\English.nsh"
 
 Function .onInit
+  ${If} ${RunningX64}
+    SetRegView 64
+  ${EndIf}
   ${GetOptions} $CMDLINE "/P" $PassiveMode
   ${IfNot} ${Errors}
     StrCpy $PassiveMode 1
@@ -932,6 +939,9 @@ Section WebView2
 SectionEnd
 
 Section Install
+  ${If} ${RunningX64}
+    SetRegView 64
+  ${EndIf}
   SetOutPath $INSTDIR
 
   !ifmacrodef NSIS_HOOK_PREINSTALL
@@ -948,7 +958,7 @@ Section Install
   FileWrite $0 "Developer: Gaurav Patil$\r$\n"
   FileWrite $0 "Portfolio: https://www.gauravpatil.online$\r$\n"
   FileWrite $0 "App: Send2Me$\r$\n"
-  FileWrite $0 "Domain: https://www.send2me.site$\r$\n"
+  FileWrite $0 "Domain: https://send2me.eu.cc$\r$\n"
   FileClose $0
 
   ; Create Crash Reporter script dynamically
@@ -959,7 +969,7 @@ Section Install
   FileOpen $0 "$INSTDIR\LICENSE_AGREEMENT.txt" w
   FileWrite $0 "SEND2ME END USER LICENSE AGREEMENT$\r$\n"
   FileWrite $0 "Developer: Gaurav Patil$\r$\n"
-  FileWrite $0 "Domain: https://www.send2me.site$\r$\n$\r$\n"
+  FileWrite $0 "Domain: https://send2me.eu.cc$\r$\n$\r$\n"
   FileWrite $0 "By installing this software, you agree to the following terms:$\r$\n"
   FileWrite $0 "1. You assume 100% legal responsibility for the files you transfer.$\r$\n"
   FileWrite $0 "2. No cloud storage is provided; data is exclusively local and peer-to-peer.$\r$\n"
@@ -1013,11 +1023,12 @@ Section Install
 
   ; Registry information for add/remove programs
   WriteRegStr SHCTX "${UNINSTKEY}" "DisplayName" "${PRODUCTNAME}"
-  WriteRegStr SHCTX "${UNINSTKEY}" "DisplayIcon" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\""
+  WriteRegStr SHCTX "${UNINSTKEY}" "DisplayIcon" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\",0"
   WriteRegStr SHCTX "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr SHCTX "${UNINSTKEY}" "Publisher" "${MANUFACTURER}"
   WriteRegStr SHCTX "${UNINSTKEY}" "InstallLocation" "$\"$INSTDIR$\""
   WriteRegStr SHCTX "${UNINSTKEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
+  WriteRegStr SHCTX "${UNINSTKEY}" "QuietUninstallString" "$\"$INSTDIR\uninstall.exe$\" /S"
   WriteRegDWORD SHCTX "${UNINSTKEY}" "NoModify" "1"
   WriteRegDWORD SHCTX "${UNINSTKEY}" "NoRepair" "1"
 
@@ -1077,6 +1088,9 @@ Function .onInstSuccess
 FunctionEnd
 
 Function un.onInit
+  ${If} ${RunningX64}
+    SetRegView 64
+  ${EndIf}
   !insertmacro SetContext
 
   !if "${INSTALLMODE}" == "both"
@@ -1097,6 +1111,9 @@ Function un.onInit
 FunctionEnd
 
 Section Uninstall
+  ${If} ${RunningX64}
+    SetRegView 64
+  ${EndIf}
 
   !ifmacrodef NSIS_HOOK_PREUNINSTALL
     !insertmacro NSIS_HOOK_PREUNINSTALL
@@ -1169,6 +1186,12 @@ Section Uninstall
     DeleteRegKey HKCU "${UNINSTKEY}"
   !endif
 
+  ${If} ${RunningX64}
+    SetRegView 32
+    DeleteRegKey HKCU "${UNINSTKEY}"
+    SetRegView 64
+  ${EndIf}
+
   ; Removes the Autostart entry for ${PRODUCTNAME} from the HKCU Run key if it exists.
   ; This ensures the program does not launch automatically after uninstallation if it exists.
   ; If it doesn't exist, it does nothing.
@@ -1220,7 +1243,7 @@ Section Uninstall
   ${EndIf}
 
   ; Open website after full uninstall
-  ExecShell "open" "https://www.send2me.site"
+  ExecShell "open" "https://send2me.eu.cc"
 SectionEnd
 
 Function RestorePreviousInstallLocation

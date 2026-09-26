@@ -35,11 +35,13 @@ export function Dashboard() {
   const fetchAppInfo = useAppStore(s => s.fetchAppInfo);
   // const localDevice = useDeviceStore(s => s.localDevice);
   const fetchLocalDevice = useDeviceStore(s => s.fetchLocalDevice);
-  const records = useHistoryStore(s => s.records);
+  const rawRecords = useHistoryStore(s => s.records);
+  const records = Array.isArray(rawRecords) ? rawRecords : [];
   const fetchHistory = useHistoryStore(s => s.fetchHistory);
   // const activeTransfers = useTransferStore(s => s.activeTransfers);
   const fetchActiveTransfers = useTransferStore(s => s.fetchActiveTransfers);
-  const bondedDevices = useSyncStore(s => s.bondedDevices);
+  const rawBondedDevices = useSyncStore(s => s.bondedDevices);
+  const bondedDevices = Array.isArray(rawBondedDevices) ? rawBondedDevices : [];
   const fetchBondedDevices = useSyncStore(s => s.fetchBondedDevices);
   const settings = useSettingsStore(s => s.settings);
   const fetchSettings = useSettingsStore(s => s.fetchSettings);

@@ -32,7 +32,7 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   fetchTrustedDevices: async () => {
     try {
       const devices = await invoke<Device[]>('get_trusted_devices');
-      set({ trustedDevices: devices });
+      set({ trustedDevices: Array.isArray(devices) ? devices : [] });
     } catch (e) {
       useNotificationStore.getState().addNotification({
         type: 'error',
@@ -45,7 +45,7 @@ export const useDeviceStore = create<DeviceState>((set) => ({
     try {
       await invoke('pair_device', { id });
       const devices = await invoke<Device[]>('get_trusted_devices');
-      set({ trustedDevices: devices });
+      set({ trustedDevices: Array.isArray(devices) ? devices : [] });
     } catch (e) {
       useNotificationStore.getState().addNotification({
         type: 'error',

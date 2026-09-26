@@ -33,7 +33,8 @@ interface TestBridgeResult {
 
 export function FolderSync() {
   const settings = useSettingsStore(s => s.settings);
-  const bondedDevices = useSyncStore(s => s.bondedDevices);
+  const rawBondedDevices = useSyncStore(s => s.bondedDevices);
+  const bondedDevices = Array.isArray(rawBondedDevices) ? rawBondedDevices : [];
   const fetchBondedDevices = useSyncStore(s => s.fetchBondedDevices);
   const removeBondedDevice = useSyncStore(s => s.removeBondedDevice);
   const navigate = useNavigate();

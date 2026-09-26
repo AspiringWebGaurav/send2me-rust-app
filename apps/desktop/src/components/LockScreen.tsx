@@ -33,11 +33,19 @@ export function LockScreen() {
   const [isUpdating, setIsUpdating] = useState(false);
   const isInitializing = useRef(false);
 
+  const isCheckingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     const handleOnline = async () => {
       setIsOnline(true);
       await invoke('ping_online');
       setIsOfflineHold(false); // Reset hold if they connect
+      if (authFailed || !auth.currentUser) {
+        isInitializing.current = false;
+        setAuthFailed(false);
+        setIsChecking(true);
+        setRetryCount(c => c + 1);
+      }
     };
     const handleOffline = () => setIsOnline(false);
 
@@ -48,7 +56,50 @@ export function LockScreen() {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, []);
+  }, [authFailed]);
+
+  // Failsafe timeout for initial security check
+  useEffect(() => {
+    if (!isChecking) return;
+    isCheckingTimeoutRef.current = setTimeout(() => {
+      setIsChecking(false);
+    }, 8000);
+    return () => {
+      if (isCheckingTimeoutRef.current) clearTimeout(isCheckingTimeoutRef.current);
+    };
+  }, [isChecking, retryCount]);
+
+  // Periodic heartbeat & token presence refresh (every 3 minutes)
+  useEffect(() => {
+    if (!hwid || authFailed || !isOnline) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const nodeRef = ref(database, `nodes/${hwid}`);
+        await update(nodeRef, { lastSeen: Date.now() });
+      } catch (err: any) {
+        console.warn("Heartbeat update failed, re-authenticating:", err);
+        try {
+          const res = await fetch('https://send2me.eu.cc/api/auth/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hwid })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.token) {
+              await signInWithCustomToken(auth, data.token);
+              await update(ref(database, `nodes/${hwid}`), { lastSeen: Date.now() });
+            }
+          }
+        } catch (reAuthErr) {
+          console.error("Silent re-authentication failed:", reAuthErr);
+        }
+      }
+    }, 3 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [hwid, authFailed, isOnline]);
 
   useEffect(() => {
     async function setupSecurity() {
@@ -63,12 +114,13 @@ export function LockScreen() {
         try {
           setAuthFailed(false); // Reset auth failed state
           
-          // Aggressive multi-fallback to ensure we can hit the Admin API whether it's on 3000, 3001, or Production
+          // Multi-fallback with active production domain send2me.eu.cc
           const urlsToTry = [
             import.meta.env.VITE_ADMIN_API_URL,
+            'https://send2me.eu.cc/api/auth/token',
+            'https://www.send2me.site/api/auth/token',
             'http://localhost:3001/api/auth/token',
             'http://localhost:3000/api/auth/token',
-            'https://www.send2me.site/api/auth/token'
           ].filter(Boolean) as string[];
 
           let response: Response | null = null;
@@ -100,8 +152,10 @@ export function LockScreen() {
           }
         } catch (authErr: any) {
           console.error("Authentication failed entirely:", authErr);
+          isInitializing.current = false;
           setAuthError(authErr.message || String(authErr));
           setAuthFailed(true);
+          setIsChecking(false);
           return; // Stop execution if auth fails
         }
 
@@ -120,10 +174,14 @@ export function LockScreen() {
             console.error("Failed to push log:", e);
           }
         };
-        const appInfo = await invoke<{version: string}>('get_app_info').catch(() => ({version: '0.0.0'}));
+        const appInfo = await invoke<{version: string}>('get_app_info').catch(() => ({version: '0.1.8'})) || {version: '0.1.8'};
 
         // 1. Check local tamper-proof security state from Rust
-        const localState = await invoke<{status: string, last_online: number}>('get_security_state');
+        const rawLocalState = await invoke<{status?: string, last_online?: number}>('get_security_state').catch(() => null);
+        const localState = {
+          status: rawLocalState?.status || 'active',
+          last_online: typeof rawLocalState?.last_online === 'number' ? rawLocalState.last_online : Date.now()
+        };
         
         let initialStatus = localState.status;
 
@@ -168,7 +226,7 @@ export function LockScreen() {
           setIsOfflineHold(true);
           await logSecurityEvent('OFFLINE', `Node locked: Exceeded 24-hour strict offline limit. Offline for ${Math.round(hoursOffline)} hours.`);
         } else if (navigator.onLine) {
-          await invoke('ping_online');
+          await invoke('ping_online').catch(() => {});
         }
 
         // 3. Register the node and update presence before attaching live listener
@@ -177,21 +235,23 @@ export function LockScreen() {
           const snap = await get(nodeRef);
           if (!snap.exists()) {
             const isWin11 = navigator.userAgent.includes('Windows NT 10.0') && navigator.userAgent.match(/Windows NT 10\.0; Win64; x64/);
-            const initialSetStatus = initialStatus !== 'active' && initialStatus !== 'update' ? initialStatus : 'active';
+            const initialSetStatus = (initialStatus && initialStatus !== 'update') ? initialStatus : 'active';
             await set(nodeRef, {
-              status: initialSetStatus,
+              status: initialSetStatus || 'active',
               os: isWin11 ? 'Windows 11' : 'Windows 10',
-              version: appInfo.version,
+              version: appInfo?.version || '0.1.8',
               lastSeen: Date.now(),
             });
             await logSecurityEvent('REGISTRATION', `Node registered successfully. Initial status: ${initialSetStatus.toUpperCase()}`);
           } else {
-            await update(nodeRef, { lastSeen: Date.now(), version: appInfo.version });
+            await update(nodeRef, { lastSeen: Date.now(), version: appInfo?.version || '0.1.8' });
           }
         } catch (err: any) {
           console.error("Failed to sync node presence:", err);
+          isInitializing.current = false;
           setAuthError(err.message || String(err));
           setAuthFailed(true);
+          setIsChecking(false);
           return; // Stop execution
         }
 
@@ -344,7 +404,12 @@ export function LockScreen() {
               )}
 
               <button 
-                onClick={() => setRetryCount(c => c + 1)}
+                onClick={() => {
+                  isInitializing.current = false;
+                  setAuthFailed(false);
+                  setIsChecking(true);
+                  setRetryCount(c => c + 1);
+                }}
                 className="px-12 py-5 bg-white text-red-700 hover:bg-white/90 hover:scale-105 active:scale-95 rounded-full font-bold shadow-[0_0_40px_rgba(255,255,255,0.3)] flex items-center justify-center gap-3 transition-all text-xl"
               >
                 <RefreshCw className="w-6 h-6" /> Try Again

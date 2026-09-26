@@ -202,9 +202,19 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let settings_i = MenuItem::with_id(app, "settings", "App Settings", true, None::<&str>)
         .map_err(|e| e.to_string())?;
-
-    let menu = Menu::with_items(app, &[&open_i, &sync_i, &transfers_i, &history_i, &sep1, &devices_i, &settings_i])
+    let sep2 = PredefinedMenuItem::separator(app)
         .map_err(|e| e.to_string())?;
+    let exit_i = MenuItem::with_id(app, "exit", "Exit Send2Me", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+
+    let menu = Menu::with_items(app, &[
+        &open_i, &sync_i, &transfers_i, &history_i, 
+        &sep1, 
+        &devices_i, &settings_i, 
+        &sep2, 
+        &exit_i
+    ])
+    .map_err(|e| e.to_string())?;
 
     let mut builder = TrayIconBuilder::with_id("main-tray")
         .tooltip("Send2Me - Folder Sync & Transfer Daemon")
@@ -216,6 +226,10 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
 
     builder
         .on_menu_event(|app, event| {
+            if event.id.as_ref() == "exit" {
+                app.exit(0);
+                return;
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();

@@ -15,7 +15,8 @@ export function Devices() {
   const [isPairModalOpen, setIsPairModalOpen] = useState(false);
   const [isSending, setIsSending] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const trustedDevices = useDeviceStore(s => s.trustedDevices);
+  const rawTrustedDevices = useDeviceStore(s => s.trustedDevices);
+  const trustedDevices = Array.isArray(rawTrustedDevices) ? rawTrustedDevices : [];
   const fetchTrustedDevices = useDeviceStore(s => s.fetchTrustedDevices);
 
   const confirmDelete = async () => {
@@ -86,7 +87,7 @@ export function Devices() {
         {trustedDevices.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {trustedDevices.map((device, i) => {
-              const isOnline = livePeers.some(p => p.pairing_code === device.pairingCode);
+              const isOnline = Array.isArray(livePeers) && livePeers.some(p => p.pairing_code === device.pairingCode);
               const status = isOnline ? 'online' : 'offline';
 
               return (

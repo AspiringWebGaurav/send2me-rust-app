@@ -104,14 +104,13 @@ cd send2me-rust-app
 cd apps/desktop
 npm install
 
-# Run application in desktop development mode
-npm run tauri dev
+# Run application in desktop development mode (from root or apps/desktop)
+npm run dev
 ```
 
 ### 📦 Production Build
 ```bash
-cd apps/desktop
-npm run tauri build
+npm run build
 ```
 Binaries will be generated in `apps/desktop/src-tauri/target/release/bundle/`.
 

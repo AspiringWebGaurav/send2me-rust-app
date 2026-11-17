@@ -1,0 +1,20 @@
+{
+  "name": "send2me-rust-app",
+  "private": true,
+  "version": "0.1.8",
+  "author": "Gaurav Patil",
+  "license": "MIT",
+  "description": "Send2Me — Fast, 100% private direct peer-to-peer file transfer and folder sync",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:frontend": "npm --prefix apps/desktop run dev:frontend",
+    "dev:engine": "npm --prefix apps/desktop run dev:engine",
+    "kill:dev": "node scripts/predev.mjs",
+    "build": "npm --prefix apps/desktop run build",
+    "build:frontend": "npm --prefix apps/desktop run build:frontend",
+    "lint": "npm --prefix apps/desktop run lint",
+    "preview": "npm --prefix apps/desktop run preview",
+    "tauri": "npm --prefix apps/desktop run tauri"
+  }
+}

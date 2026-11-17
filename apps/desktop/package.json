@@ -6,8 +6,12 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "node scripts/dev.mjs",
+    "dev:frontend": "vite",
+    "dev:engine": "tauri dev",
+    "kill:dev": "node scripts/predev.mjs",
+    "build": "tauri build",
+    "build:frontend": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
     "tauri": "tauri"

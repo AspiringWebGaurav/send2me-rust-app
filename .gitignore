@@ -37,6 +37,8 @@ macos_assets/
 linux_assets/
 all_release_assets/
 staged_downloads/
+all-base-app/
+*-immutable-base/
 SHA256SUMS.txt
 *.exe
 *.msi

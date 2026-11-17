@@ -5,54 +5,43 @@
 
   **Fast, 100% Private, Direct File Transfer & Sync Between Devices — Zero Cloud Required.**
 
-  [![Latest Release](https://img.shields.io/github/v/release/AspiringWebGaurav/send2me-rust-app?color=blue&label=Latest%20Release)](https://github.com/AspiringWebGaurav/send2me-rust-app/releases/latest)
+  [![Mode: 100% Offline](https://img.shields.io/badge/Mode-100%25%20Offline-brightgreen.svg)](#)
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
   [![Built with Rust & Tauri](https://img.shields.io/badge/Built%20with-Rust%20%2B%20Tauri-FFC131.svg)](https://tauri.app/)
-  [![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg?logo=githubactions)](https://github.com/AspiringWebGaurav/send2me-rust-app/actions)
 
   <br/>
 
-  <a href="https://github.com/AspiringWebGaurav/send2me-rust-app/releases/latest">
-    <img src="https://img.shields.io/badge/📥%20DOWNLOAD%20LATEST%20APP-Click%20Here-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download Latest Release">
-  </a>
+  <p><b>Built Locally · 100% Offline · Zero External Server Dependencies</b></p>
 </div>
 
 <br/>
 
 ---
 
-## ⚡ How It Works (3 Easy Steps)
+## ⚡ Local Build & Run (3 Easy Steps)
 
-| 1️⃣ Download | 2️⃣ Install | 3️⃣ Start Sharing |
+| 1️⃣ Install Dependencies | 2️⃣ Build Locally | 3️⃣ Start Sharing |
 | :---: | :---: | :---: |
-| Click the download link for your computer below | Double-click the downloaded file to run setup | Pick files and send them directly to any device! |
+| `cd apps/desktop && npm install` | `npm run tauri build` or `npm run tauri dev` | Direct peer-to-peer file sharing and folder sync! |
 
 ---
 
-## 💻 Choose Your Computer & Download
+## 💻 Local Building
 
-### 🪟 Windows (10 / 11)
-- 👉 **[Send2Me Setup Installer (.exe)](https://github.com/AspiringWebGaurav/send2me-rust-app/releases/latest)** — **⭐ RECOMMENDED** *(Standard setup wizard with start menu shortcuts)*
+To build the standalone installer or executable on your machine:
 
-<details>
-<summary>🛠️ Advanced Windows Options (MSI, Portable)</summary>
+```bash
+# Navigate to the desktop app directory
+cd apps/desktop
 
-- **Enterprise MSI Installer:** `Send2Me_x64.msi` *(For corporate IT deployment)*
-- **Portable Executable (No Install Needed):** `Send2Me_x64-portable.exe`
-- **Portable ZIP Archive:** `Send2Me_windows-x64.zip`
-</details>
+# Install node dependencies
+npm install
 
----
+# Build the native production application
+npm run tauri build
+```
 
-### 🍎 Mac (macOS)
-- 🍏 **[Apple Silicon DMG (M1 / M2 / M3 / M4)](https://github.com/AspiringWebGaurav/send2me-rust-app/releases/latest)** — *Drag to Applications folder*
-- 💻 **[Intel Mac DMG](https://github.com/AspiringWebGaurav/send2me-rust-app/releases/latest)** — *For older Intel-based Macs*
-
----
-
-### 🐧 Linux (Ubuntu, Debian, Fedora, Arch)
-- 🚀 **[Universal AppImage](https://github.com/AspiringWebGaurav/send2me-rust-app/releases/latest)** — *Double-click to run on any Linux distro*
-- 📦 **[Debian / Ubuntu Package (.deb)](https://github.com/AspiringWebGaurav/send2me-rust-app/releases/latest)** — *Native Linux installer package*
+Binary outputs will be located in `apps/desktop/src-tauri/target/release/bundle/`.
 
 ---
 

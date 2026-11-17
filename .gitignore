@@ -39,6 +39,7 @@ all_release_assets/
 staged_downloads/
 all-base-app/
 *-immutable-base/
+base_version.txt
 SHA256SUMS.txt
 *.exe
 *.msi

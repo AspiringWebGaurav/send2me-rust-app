@@ -1,7 +1,7 @@
 {
   "name": "send2me-rust-app",
   "private": true,
-  "version": "0.1.8",
+  "version": "0.0.1",
   "author": "Gaurav Patil",
   "license": "MIT",
   "description": "Send2Me — Fast, 100% private direct peer-to-peer file transfer and folder sync",

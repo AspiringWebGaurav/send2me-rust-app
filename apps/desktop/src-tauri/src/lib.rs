@@ -76,6 +76,28 @@ fn set_app_version_override(version: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn execute_auto_update(
+    app: tauri::AppHandle,
+    target_version: String,
+) -> Result<(), String> {
+    let clean_ver = target_version.trim().trim_start_matches('v').to_string();
+    let _ = set_app_version_override(clean_ver);
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        if let Ok(current_exe) = std::env::current_exe() {
+            let mut cmd = std::process::Command::new(&current_exe);
+            cmd.creation_flags(0x08000000 | 0x00000008); // CREATE_NO_WINDOW | DETACHED_PROCESS
+            let _ = cmd.spawn();
+        }
+    }
+
+    app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
 fn get_hardware_id() -> String {
     let mut path = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
     let suffix = std::env::var("SEND2ME_APP_DIR_SUFFIX").unwrap_or_default();
@@ -696,6 +718,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_app_info,
             set_app_version_override,
+            execute_auto_update,
             get_hardware_id,
             services::security_service::get_security_state,
             services::security_service::update_security_state,

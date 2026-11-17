@@ -19,6 +19,7 @@ import { disposeHistoryListeners } from "./stores/useHistoryStore";
 import { useSettingsStore } from "./stores/useSettingsStore";
 import { useAppStore } from "./stores/useAppStore";
 import { useLagStore } from "./stores/useLagStore";
+import { useUpdateStore } from "./stores/useUpdateStore";
 
 export default function App() {
   const settings = useSettingsStore(state => state.settings);
@@ -35,6 +36,25 @@ export default function App() {
     useSyncStore.getState().initListeners();
     initLag();
 
+    // Automated background update lifecycle (1:1 CP parity: zero user clicks required)
+    const updateTimeout = setTimeout(() => {
+      useUpdateStore.getState().checkForUpdates();
+    }, 1500);
+
+    let lastFocusCheck = Date.now();
+    const handleFocus = () => {
+      const now = Date.now();
+      if (now - lastFocusCheck > 30000) {
+        lastFocusCheck = now;
+        useUpdateStore.getState().checkForUpdates();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+
+    const updateInterval = setInterval(() => {
+      useUpdateStore.getState().checkForUpdates();
+    }, 60000);
+
     // Best-effort: request desktop notification permission once at boot so the
     // first successful transfer notification isn't silently dropped.
     (async () => {
@@ -48,6 +68,9 @@ export default function App() {
     })();
 
     return () => {
+      clearTimeout(updateTimeout);
+      clearInterval(updateInterval);
+      window.removeEventListener('focus', handleFocus);
       disposeDeviceListeners();
       disposeTransferListeners();
       disposeSyncListeners();

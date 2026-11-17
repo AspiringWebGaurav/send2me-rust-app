@@ -8,6 +8,7 @@ import { useSettingsStore } from "../stores/useSettingsStore";
 import { Logo } from "./Logo";
 import { motion, AnimatePresence } from "framer-motion";
 import { HardwareStatusBadge } from "./HardwareStatusBadge";
+import { HeaderVersionLockup } from "./HeaderVersionLockup";
 
 export function Navbar() {
   const location = useLocation();
@@ -160,6 +161,8 @@ export function Navbar() {
         })}
         <div className="w-px h-4 bg-border/70 mx-2"></div>
         <HardwareStatusBadge />
+        <div className="w-px h-4 bg-border/70 mx-1"></div>
+        <HeaderVersionLockup />
         <div className="w-px h-4 bg-border/70 mx-1"></div>
         <NavLink
           to="/settings"

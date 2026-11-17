@@ -1,6 +1,6 @@
 {
   "productName": "Send2Me",
-  "version": "0.1.8",
+  "version": "0.0.1",
   "identifier": "com.send2me.app",
   "build": {
     "beforeDevCommand": "npm run dev:frontend",
@@ -39,8 +39,6 @@
     "copyright": "Copyright 2026 Gaurav Patil",
     "licenseFile": "../../../LICENSE",
     "windows": {
-      "certificateThumbprint": "60EDF11308162990F758EB35B5F96FDDD505283E",
-      "digestAlgorithm": "sha256",
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "template": "custom_installer.nsi"

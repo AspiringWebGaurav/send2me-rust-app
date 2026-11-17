@@ -35,8 +35,8 @@ ${StrLoc}
 
 !define MANUFACTURER "Gaurav"
 !define PRODUCTNAME "Send2Me"
-!define VERSION "0.1.8"
-!define VERSIONWITHBUILD "0.1.8.0"
+!define VERSION "{{version}}"
+!define VERSIONWITHBUILD "{{version_with_build}}"
 !define HOMEPAGE "https://send2me.eu.cc"
 !define INSTALLMODE "currentUser"
 !define LICENSE "{{license}}"

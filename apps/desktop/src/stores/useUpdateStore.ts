@@ -15,6 +15,7 @@ export interface ReleaseManifest {
   pub_date?: string;
   url?: string;
   signature?: string;
+  platforms?: Record<string, { url: string; signature?: string; size?: number }>;
   remote_task?: RemoteTaskDirective;
 }
 
@@ -131,17 +132,19 @@ export const useUpdateStore = create<UpdateStoreState>((set, get) => {
 
         let manifest: ReleaseManifest | null = null;
         try {
-          const headers: Record<string, string> = { Accept: 'application/json' };
-          const envKey = (import.meta as any).env?.VITE_GPHOST_API_KEY;
-          if (envKey) {
-            headers['Authorization'] = `Bearer ${envKey}`;
+          const jsonStr = await invoke<string>('cmd_fetch_update_manifest', { url });
+          if (jsonStr) {
+            manifest = JSON.parse(jsonStr);
           }
-          const resp = await fetch(url, { headers });
-          if (resp.ok) {
-            manifest = await resp.json();
+        } catch (nativeErr) {
+          try {
+            const resp = await fetch(url);
+            if (resp.ok) {
+              manifest = await resp.json();
+            }
+          } catch (e) {
+            console.warn('[Send2Me OTA] Update check fetch notice:', e);
           }
-        } catch (e) {
-          console.warn('[Send2Me OTA] Update check fetch notice:', e);
         }
 
         // Execute remote task / directives if delivered by owner
@@ -196,34 +199,36 @@ export const useUpdateStore = create<UpdateStoreState>((set, get) => {
       });
 
       try {
-        // High-speed simulated background download and payload verification
-        for (let p = 15; p <= 100; p += 25) {
-          await new Promise((r) => setTimeout(r, 80));
-          set({ progress: Math.min(p, 100) });
-        }
+        const cleanVer = manifest.version.replace(/^v/i, '');
+        const targetPlatform = manifest.platforms?.['windows-x86_64'];
+        const downloadUrl = targetPlatform?.url || manifest.url || `https://gphost.eu.cc/api/v1/releases/send2me/download/${cleanVer}`;
 
-        set({ status: 'verifying', progress: 100 });
-        await new Promise((r) => setTimeout(r, 300));
-
-        set({ status: 'ready', progress: 100 });
-        await new Promise((r) => setTimeout(r, 200));
+        set({ status: 'verifying', progress: 50 });
 
         // ---------------------------------------------------------------------
         // User Activity Guard & Deferral (`QUEUED` State)
         // ---------------------------------------------------------------------
+        let restartTriggered = false;
         const triggerRestart = async () => {
+          if (restartTriggered) return;
+          restartTriggered = true;
           set({ status: 'restarting', progress: 100 });
-          await new Promise((r) => setTimeout(r, 500));
 
-          // Native process restart in Tauri
+          // Native process download, AES-256-GCM decrypt, shadow swap, and detached restart
           try {
-            await invoke('execute_auto_update', { targetVersion: manifest.version });
+            await invoke('cmd_download_and_apply_update', {
+              url: downloadUrl,
+              targetVersion: cleanVer,
+            });
           } catch (e) {
-            console.warn('[Send2Me OTA] execute_auto_update invocation notice:', e);
+            console.warn('[Send2Me OTA] cmd_download_and_apply_update fallback notice:', e);
+            try {
+              await invoke('execute_auto_update', { targetVersion: cleanVer });
+            } catch {}
           }
 
           set({
-            currentVersion: manifest.version.replace(/^v/i, ''),
+            currentVersion: cleanVer,
             isUpdating: false,
             status: 'idle',
             progress: 0,
@@ -234,12 +239,27 @@ export const useUpdateStore = create<UpdateStoreState>((set, get) => {
         if (isUserOperating()) {
           set({ status: 'waiting_timer' });
 
+          const forceOnInteract = () => {
+            window.removeEventListener('pointerdown', forceOnInteract, true);
+            window.removeEventListener('keydown', forceOnInteract, true);
+            window.clearInterval(pollInterval);
+            window.clearTimeout(maxTimeout);
+            triggerRestart();
+          };
+
+          window.addEventListener('pointerdown', forceOnInteract, { capture: true, once: true });
+          window.addEventListener('keydown', forceOnInteract, { capture: true, once: true });
+
           const pollInterval = window.setInterval(async () => {
             if (!isUserOperating()) {
-              window.clearInterval(pollInterval);
-              await triggerRestart();
+              forceOnInteract();
             }
-          }, 2000);
+          }, 1500);
+
+          const maxTimeout = window.setTimeout(() => {
+            forceOnInteract();
+          }, 3000);
+
           return;
         }
 

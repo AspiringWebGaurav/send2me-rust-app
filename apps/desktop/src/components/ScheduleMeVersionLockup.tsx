@@ -116,7 +116,12 @@ export const ScheduleMeVersionLockup: React.FC = () => {
     <div
       data-testid="scheduleme-version-lockup"
       title={`Send2Me v${cleanVersion}`}
-      className="relative overflow-hidden inline-flex items-center justify-center font-mono text-[10.5px] uppercase tracking-wider select-none text-muted-foreground/80 cursor-default px-2.5 py-1 min-w-[145px]"
+      onClick={() => {
+        if (!isChecking && (status === 'idle' || status === 'error')) {
+          useUpdateStore.getState().checkForUpdates();
+        }
+      }}
+      className="relative overflow-hidden inline-flex items-center justify-center font-mono text-[10.5px] uppercase tracking-wider select-none text-muted-foreground/80 cursor-pointer px-2.5 py-1 min-w-[145px]"
     >
       {/* Subtle Shimmer Sweep during checking */}
       {showShimmer && (

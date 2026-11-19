@@ -5,6 +5,7 @@ use tokio::sync::RwLock;
 
 mod services;
 pub mod remote_task;
+pub mod ota;
 use services::device_service::*;
 use services::transfer_service::*;
 use services::history_service::*;
@@ -168,27 +169,27 @@ async fn execute_auto_update(
     target_version: String,
 ) -> Result<(), String> {
     let clean_ver = target_version.trim().trim_start_matches('v').to_string();
-    let _ = set_app_version_override(clean_ver);
+    let download_url = format!("https://gphost.eu.cc/api/v1/releases/send2me/download/{}", clean_ver);
+    ota::download_and_apply_update(&app, &download_url, &clean_ver).await
+}
 
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        if let Ok(current_exe) = std::env::current_exe() {
-            let mut cmd = std::process::Command::new(&current_exe);
-            cmd.arg("--update-restart");
-            cmd.arg("--restarted");
-            cmd.arg(format!("--parent-pid={}", std::process::id()));
-            cmd.arg("--show");
-            cmd.stdin(std::process::Stdio::null());
-            cmd.stdout(std::process::Stdio::null());
-            cmd.stderr(std::process::Stdio::null());
-            cmd.creation_flags(0x08000000 | 0x00000008); // CREATE_NO_WINDOW | DETACHED_PROCESS
-            let _ = cmd.spawn();
-        }
-    }
+#[tauri::command]
+async fn cmd_fetch_update_manifest(url: String) -> Result<String, String> {
+    ota::fetch_manifest(&url).await
+}
 
-    app.exit(0);
-    Ok(())
+#[tauri::command]
+async fn cmd_download_and_apply_update(
+    app: tauri::AppHandle,
+    url: String,
+    target_version: String,
+) -> Result<(), String> {
+    ota::download_and_apply_update(&app, &url, &target_version).await
+}
+
+#[tauri::command]
+fn cmd_clean_superseded_old_binaries() -> Result<bool, String> {
+    ota::clean_superseded_old_binaries()
 }
 
 #[tauri::command]
@@ -699,6 +700,7 @@ pub fn run() {
             app.manage(state);
             app.manage(services::p2p_drive_service::DriveStateContainer(drive_manager.clone()));
             let _ = setup_tray(app.handle());
+            let _ = ota::clean_superseded_old_binaries();
 
             // Start the Sync State Manager (The "Sync Brain")
             services::sync_state_manager::start_sync_state_manager(manifest_db.clone(), app.handle().clone());
@@ -829,6 +831,9 @@ pub fn run() {
             get_app_info,
             set_app_version_override,
             execute_auto_update,
+            cmd_fetch_update_manifest,
+            cmd_download_and_apply_update,
+            cmd_clean_superseded_old_binaries,
             remote_task::cmd_execute_remote_directive,
             get_hardware_id,
             services::security_service::get_security_state,

@@ -9,6 +9,7 @@ import { FolderSync } from "./pages/FolderSync";
 import { DriveRoom } from "./pages/DriveRoom";
 import { DriveGuest } from "./pages/DriveGuest";
 import { useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { MotionConfig } from "framer-motion";
 import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
 
@@ -18,28 +19,27 @@ import { useSyncStore, disposeSyncListeners } from "./stores/useSyncStore";
 import { disposeHistoryListeners } from "./stores/useHistoryStore";
 import { useSettingsStore } from "./stores/useSettingsStore";
 import { useAppStore } from "./stores/useAppStore";
-import { useLagStore } from "./stores/useLagStore";
 import { useUpdateStore } from "./stores/useUpdateStore";
 
 export default function App() {
   const settings = useSettingsStore(state => state.settings);
   const fetchSettings = useSettingsStore(state => state.fetchSettings);
   const fetchAppInfo = useAppStore(state => state.fetchAppInfo);
-  const initLag = useLagStore(state => state.init);
-  const disposeLag = useLagStore(state => state.dispose);
 
   useEffect(() => {
+    // Bring window to foreground on top of other windows immediately on launch
+    invoke("show_main_window").catch(() => {});
+
     fetchSettings();
     fetchAppInfo();
 
     useTransferStore.getState().initListeners();
     useSyncStore.getState().initListeners();
-    initLag();
 
-    // Automated background update lifecycle (1:1 CP parity: zero user clicks required)
+    // Automated background update lifecycle (1:1 ScheduleMe parity: 2.5s silent boot check, zero user clicks required)
     const updateTimeout = setTimeout(() => {
       useUpdateStore.getState().checkForUpdates();
-    }, 1500);
+    }, 2500);
 
     let lastFocusCheck = Date.now();
     const handleFocus = () => {
@@ -50,6 +50,11 @@ export default function App() {
       }
     };
     window.addEventListener('focus', handleFocus);
+
+    const handleOnline = () => {
+      useUpdateStore.getState().checkForUpdates();
+    };
+    window.addEventListener('online', handleOnline);
 
     const updateInterval = setInterval(() => {
       useUpdateStore.getState().checkForUpdates();
@@ -71,13 +76,13 @@ export default function App() {
       clearTimeout(updateTimeout);
       clearInterval(updateInterval);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleOnline);
       disposeDeviceListeners();
       disposeTransferListeners();
       disposeSyncListeners();
       disposeHistoryListeners();
-      disposeLag();
     };
-  }, [fetchSettings, fetchAppInfo, initLag, disposeLag]);
+  }, [fetchSettings, fetchAppInfo]);
 
   useEffect(() => {
     const applyTheme = (theme: string) => {

@@ -7,8 +7,6 @@ import { useNotificationStore } from "../stores/useNotificationStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { Logo } from "./Logo";
 import { motion, AnimatePresence } from "framer-motion";
-import { HardwareStatusBadge } from "./HardwareStatusBadge";
-import { HeaderVersionLockup } from "./HeaderVersionLockup";
 
 export function Navbar() {
   const location = useLocation();
@@ -63,40 +61,37 @@ export function Navbar() {
   const activeOngoing = activeTransfers.filter(t => !['cancelled', 'failed', 'completed'].includes(t.status)).length;
 
   return (
-    <motion.header
-      initial={{ opacity: 0, y: -12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-      className="h-14 border-b border-border/60 bg-panel/75 backdrop-blur-xl flex items-center justify-between px-4 sm:px-6 z-50 shrink-0"
-    >
-      <div className="flex items-center gap-1 lg:gap-3">
+    <header className="h-12 border-b border-border/60 bg-panel/75 backdrop-blur-xl flex items-center justify-between px-3 sm:px-4 z-50 shrink-0 select-none overflow-hidden">
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         <button 
           onClick={handleLogoClick}
-          className="flex items-center gap-2 lg:gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg px-2 py-1 -ml-2 transition-colors hover:bg-secondary/60 active:scale-[0.98]"
+          className="flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg px-1.5 py-1 transition-colors hover:bg-secondary/60 active:scale-[0.98]"
           title="Go to Dashboard"
         >
           <motion.div
             animate={logoWiggle ? { rotate: [0, -15, 15, -15, 15, 0] } : {}}
             transition={{ duration: 0.4 }}
           >
-            <Logo className="w-7 h-7" />
+            <Logo className="w-6 h-6" />
           </motion.div>
-          <h1 className="text-[15px] font-semibold tracking-tight text-foreground hidden sm:block">Send2Me</h1>
+          <h1 className="text-sm font-semibold tracking-tight text-foreground hidden sm:block">Send2Me</h1>
         </button>
 
         {/* Connect Code Pill */}
         {localDevice?.pairingCode && (
           <button
             type="button"
+            data-testid="navbar-connect-code"
             onClick={handleCopy}
+            title={`Connect Code: ${localDevice.pairingCode} (Click to copy)`}
             aria-label={copied ? "Connect code copied" : `Copy connect code ${localDevice.pairingCode}`}
-            className="ml-1 lg:ml-4 group flex items-center gap-2 h-8 pl-3 pr-2.5 rounded-full bg-secondary/60 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97]"
+            className="group flex items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-full bg-secondary/60 hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97]"
           >
-            <span className="text-[11px] font-medium text-muted-foreground hidden lg:inline">Connect Code</span>
-            <span className="text-[13px] font-mono font-semibold tracking-[0.15em] text-primary">{localDevice.pairingCode}</span>
-            <span className="relative w-3.5 h-3.5">
-              <Copy className={`absolute inset-0 w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${copied ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`} />
-              <CheckCircle2 className={`absolute inset-0 w-3.5 h-3.5 text-success transition-all duration-200 ${copied ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`} />
+            <span className="text-[10px] font-medium text-muted-foreground hidden xl:inline">Connect Code</span>
+            <span className="text-xs font-mono font-semibold tracking-wider text-primary">{localDevice.pairingCode}</span>
+            <span className="relative w-3 h-3">
+              <Copy className={`absolute inset-0 w-3 h-3 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${copied ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`} />
+              <CheckCircle2 className={`absolute inset-0 w-3 h-3 text-success transition-all duration-200 ${copied ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`} />
             </span>
             <span className="sr-only" aria-live="polite">{copied ? "Copied" : ""}</span>
           </button>
@@ -108,19 +103,19 @@ export function Navbar() {
               initial={{ opacity: 0, scale: 0.8, x: -10 }}
               animate={{ opacity: 1, scale: 1, x: 0 }}
               exit={{ opacity: 0, scale: 0.8, x: -10 }}
-              className="ml-1 lg:ml-2 flex items-center gap-1.5 h-8 px-2.5 rounded-full bg-primary/10 border border-primary/20"
+              className="flex items-center gap-1.5 h-7 px-2 rounded-full bg-primary/10 border border-primary/20"
             >
-              <div className="relative w-3.5 h-3.5">
+              <div className="relative w-3 h-3">
                 <span className="absolute inset-0 rounded-full border border-primary/40 animate-[ping_1.5s_ease-in-out_infinite]" />
-                <Link2 className="absolute inset-0 w-3.5 h-3.5 text-primary" />
+                <Link2 className="absolute inset-0 w-3 h-3 text-primary" />
               </div>
-              <span className="text-[11px] font-semibold text-primary hidden lg:inline tracking-wide uppercase">Binding</span>
+              <span className="text-[10px] font-semibold text-primary hidden lg:inline tracking-wide uppercase">Binding</span>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      <nav className="flex items-center gap-0.5 overflow-x-auto no-scrollbar">
+      <nav className="flex items-center gap-0.5 sm:gap-1 shrink-0 overflow-visible">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -129,7 +124,7 @@ export function Navbar() {
               to={tab.path}
               end={tab.end}
               className={({ isActive }) =>
-                `relative flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                `relative flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-xs font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0 ${
                   isActive
                     ? "text-primary-foreground"
                     : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
@@ -146,10 +141,10 @@ export function Navbar() {
                     />
                   )}
                   <span className="relative flex items-center gap-1.5">
-                    <Icon className="w-3.5 h-3.5" />
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
                     <span className="tracking-wide">{tab.name}</span>
                     {tab.name === "Transfers" && activeOngoing > 0 && (
-                      <span className="ml-0.5 flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-danger text-white text-[10px] font-bold leading-none">
+                      <span className="ml-0.5 flex items-center justify-center min-w-[15px] h-3.5 px-1 rounded-full bg-danger text-white text-[9px] font-bold leading-none">
                         {activeOngoing}
                       </span>
                     )}
@@ -159,16 +154,13 @@ export function Navbar() {
             </NavLink>
           );
         })}
-        <div className="w-px h-4 bg-border/70 mx-2"></div>
-        <HardwareStatusBadge />
-        <div className="w-px h-4 bg-border/70 mx-1"></div>
-        <HeaderVersionLockup />
-        <div className="w-px h-4 bg-border/70 mx-1"></div>
+        <div className="w-px h-3.5 bg-border/70 mx-1 sm:mx-1.5 shrink-0"></div>
         <NavLink
           to="/settings"
+          data-testid="navbar-settings-button"
           aria-label="Settings"
           className={({ isActive }) =>
-            `relative flex items-center justify-center w-8 h-8 rounded-lg transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            `relative flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 mr-1 sm:mr-1.5 rounded-lg transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0 ${
               isActive
                 ? "text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
@@ -184,11 +176,11 @@ export function Navbar() {
                   transition={{ type: "spring", stiffness: 400, damping: 32 }}
                 />
               )}
-              <Settings className="w-4 h-4 relative" />
+              <Settings className="w-4 h-4 relative shrink-0" />
             </>
           )}
         </NavLink>
       </nav>
-    </motion.header>
+    </header>
   );
 }

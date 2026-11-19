@@ -164,26 +164,9 @@ pub async fn start_transfer(
                         transfer::stream::ProgressEvent::Bytes(bytes) => {
                             total_transferred = total_transferred.saturating_add(bytes as u64);
                         }
-                        transfer::stream::ProgressEvent::ChunkStarted(index, _size) => {
-                            let _ = app_handle.emit(
-                                "chunk-progress",
-                                serde_json::json!({
-                                    "transferId": transfer_id_clone,
-                                    "chunkIndex": index,
-                                    "status": "downloading",
-                                }),
-                            );
-                        }
-                        transfer::stream::ProgressEvent::ChunkCompleted(index) => {
+                        transfer::stream::ProgressEvent::ChunkStarted(_index, _size) => {}
+                        transfer::stream::ProgressEvent::ChunkCompleted(_index) => {
                             chunks_completed = chunks_completed.saturating_add(1);
-                            let _ = app_handle.emit(
-                                "chunk-progress",
-                                serde_json::json!({
-                                    "transferId": transfer_id_clone,
-                                    "chunkIndex": index,
-                                    "status": "completed",
-                                }),
-                            );
                         }
                         transfer::stream::ProgressEvent::Cancel
                         | transfer::stream::ProgressEvent::Pause

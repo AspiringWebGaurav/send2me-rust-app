@@ -128,8 +128,13 @@ impl NetworkManager {
                 pkarr::dns::rdata::RData::TXT(txt_rdata),
             ));
             
+            // Allow 2.5s for Mainline DHT bootstrap nodes to respond before first publish
+            tokio::time::sleep(tokio::time::Duration::from_millis(2500)).await;
+
             let mut backoff = 2;
+            let mut attempts = 0;
             loop {
+                attempts += 1;
                 if let Ok(signed_packet) = SignedPacket::from_packet(&keypair, &packet) {
                     let client_clone = client.clone();
                     
@@ -141,11 +146,11 @@ impl NetworkManager {
                             }
                             Err(e) => {
                                 let msg = e.to_string();
-                                if msg.contains("inflight") {
-                                    // The DHT is actively working on publishing this in the background
-                                    tracing::debug!("DHT publish is actively inflight. Waiting...");
+                                if msg.contains("inflight") || msg.contains("close to store value") {
+                                    // DHT is actively bootstrapping routing table or finding nodes
+                                    tracing::debug!("DHT network bootstrapping routing table. Retrying in background...");
                                 } else {
-                                    tracing::info!("DHT publish pending network bootstrap ({}). Retrying...", msg);
+                                    tracing::debug!("DHT publish retry ({})", msg);
                                 }
                                 false
                             }
@@ -160,10 +165,14 @@ impl NetworkManager {
                     break;
                 }
 
+                if attempts >= 10 {
+                    tracing::debug!("Global DHT publish timed out after 10 attempts; operating in local LAN / direct mode.");
+                    break;
+                }
+
                 tokio::time::sleep(tokio::time::Duration::from_secs(backoff)).await;
-                // If it's inflight, the internal query usually takes up to 60s to time out.
                 // We keep polling gently.
-                backoff = std::cmp::min(backoff * 2, 30);
+                backoff = std::cmp::min(backoff * 2, 15);
             }
         });
     }

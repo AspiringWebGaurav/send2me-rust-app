@@ -22,7 +22,7 @@ if (typeof window !== 'undefined' && !(window as any).__TAURI_INTERNALS__) {
           return devId;
         }
         case 'get_app_info':
-          return { name: 'Send2Me', version: '0.1.8', os: 'Windows', arch: 'x64' };
+          return { name: 'Send2Me', version: '0.0.1', os: 'Windows', arch: 'x64' };
         case 'get_settings_cached':
         case 'get_settings':
           return {
@@ -32,38 +32,33 @@ if (typeof window !== 'undefined' && !(window as any).__TAURI_INTERNALS__) {
             port: 8080,
             notifications_enabled: true
           };
+        case 'get_local_device':
         case 'get_my_device_info':
           return {
             id: 'dev-node-001',
             name: 'Send2Me Local PC',
             os: 'Windows 11',
-            ip: '127.0.0.1'
+            ip: '127.0.0.1',
+            pairingCode: '5737',
+            deviceType: 'desktop',
+            status: 'online',
+            isTrusted: true
           };
         case 'get_security_state':
           return {
             status: 'active',
             last_online: Date.now()
           };
-        case 'get_app_info':
-          return {
-            version: '0.1.8'
-          };
         case 'get_trusted_devices':
         case 'get_bonded_devices':
         case 'get_peers':
+          return [];
         case 'get_active_transfers':
         case 'get_transfers':
+          return (window as any).__MOCK_ACTIVE_TRANSFERS__ || [];
         case 'get_transfer_history':
         case 'get_history':
           return [];
-        case 'get_hardware_snapshot':
-          return {
-            severity: 'nominal',
-            cpuPercent: 14,
-            memoryPercent: 32,
-            hint: '',
-            sustainedMs: 0
-          };
         case 'check_firewall_permission':
         case 'request_firewall_permission':
           return true;

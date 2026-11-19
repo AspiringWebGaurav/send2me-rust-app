@@ -65,12 +65,12 @@ export function Modal({ isOpen, onClose, children, className, initialFocusRef, s
             ref={dialogRef}
             role="dialog"
             aria-modal="true"
-            initial={{ opacity: 0, scale: 0.96, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 8 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
-              "relative z-50 w-full max-w-lg glass-card rounded-2xl p-8 shadow-[var(--shadow-e4)]",
+              "relative z-50 w-full max-w-md glass-card rounded-2xl p-5 sm:p-6 shadow-[var(--shadow-e4)] max-h-[88vh] overflow-y-auto",
               className
             )}
           >
@@ -78,7 +78,7 @@ export function Modal({ isOpen, onClose, children, className, initialFocusRef, s
               <button
                 onClick={onClose}
                 aria-label="Close dialog"
-                className="absolute right-5 top-5 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="absolute right-4 top-4 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <X className="w-4 h-4" />
               </button>

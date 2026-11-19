@@ -151,51 +151,50 @@ export function FolderSync() {
 
   return (
     <div className="h-full flex flex-col">
-      <header className="h-16 shrink-0 flex items-center justify-between px-2 sm:px-4 mb-4">
+      <header className="h-10 shrink-0 flex items-center justify-between px-2 sm:px-3 mb-2">
         <div>
-          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight">Folder Sync</h2>
-          <p className="text-xs sm:text-sm text-muted-foreground">Manage your bonded devices and syncing folders</p>
+          <h2 className="text-lg font-semibold tracking-tight">Folder Sync</h2>
         </div>
-        <div className="flex items-center gap-2 bg-secondary/30 p-1 rounded-full border border-border/50">
+        <div className="flex items-center gap-1 bg-secondary/40 p-0.5 rounded-lg border border-border/50">
           <button
             onClick={() => setActiveTab('devices')}
-            className={`h-8 px-4 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
+            className={`h-7 px-3 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
               activeTab === 'devices' 
                 ? 'bg-background shadow-sm text-foreground' 
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <Monitor className="w-4 h-4" />
+            <Monitor className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Devices</span>
           </button>
           <button
             onClick={() => setActiveTab('transactions')}
-            className={`h-8 px-4 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
+            className={`h-7 px-3 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
               activeTab === 'transactions' 
                 ? 'bg-background shadow-sm text-foreground' 
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <Activity className="w-4 h-4" />
-            <span className="hidden sm:inline">Transactions</span>
+            <Activity className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Activity</span>
             {Object.keys(liveTransactions).length > 0 && (
-              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold animate-pulse">
+              <span className="flex items-center justify-center w-4 h-4 rounded-full bg-primary text-primary-foreground text-[9px] font-bold animate-pulse">
                 {Object.keys(liveTransactions).length}
               </span>
             )}
           </button>
           <button
             onClick={() => setActiveTab('queue')}
-            className={`h-8 px-4 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
+            className={`h-7 px-3 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
               activeTab === 'queue' 
                 ? 'bg-background shadow-sm text-foreground' 
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <Clock className="w-4 h-4" />
-            <span className="hidden sm:inline">Live Queue</span>
+            <Clock className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Queue</span>
             {queueRecords.length > 0 && (
-              <span className="ml-1 w-5 h-5 rounded-full bg-primary/20 text-primary text-[10px] font-bold flex items-center justify-center">
+              <span className="ml-1 w-4 h-4 rounded-full bg-primary/20 text-primary text-[9px] font-bold flex items-center justify-center">
                 {queueRecords.length}
               </span>
             )}
@@ -204,22 +203,22 @@ export function FolderSync() {
       </header>
 
       {activeTab === 'devices' ? (
-        <div className="flex-1 overflow-y-auto px-2 sm:px-4 pb-8 space-y-4">
+        <div className="flex-1 overflow-y-auto px-2 sm:px-3 pb-1 min-h-0 flex flex-col">
         {bondedDevices.length === 0 ? (
           <motion.div 
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center h-64 text-center border-2 border-dashed border-border/60 rounded-2xl bg-secondary/30"
+            className="flex-1 border-2 border-dashed border-border/60 rounded-xl bg-secondary/20 flex flex-col items-center justify-center p-6 text-center min-h-0"
           >
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-              <Search className="w-8 h-8 text-primary" />
+            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-2">
+              <Search className="w-6 h-6 text-primary" />
             </div>
-            <h3 className="text-lg font-semibold mb-1">No bonded devices</h3>
-            <p className="text-sm text-muted-foreground max-w-sm mb-6">
-              You haven't bonded with any devices yet. Bind a device to start syncing folders automatically.
+            <h3 className="text-base font-semibold mb-1">No bonded devices</h3>
+            <p className="text-xs text-muted-foreground max-w-xs mb-4">
+              Bind a device to start syncing folders automatically across devices.
             </p>
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('folder-sync-bind-open'))}
-              className="h-10 px-6 rounded-full bg-primary text-primary-foreground font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-px transition-all"
+              className="h-8 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-semibold shadow hover:shadow-primary/30 transition-all cursor-pointer"
             >
               Bind New Device
             </button>

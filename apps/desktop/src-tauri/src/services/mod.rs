@@ -1,6 +1,5 @@
 pub mod device_service;
 pub mod event_emitter;
-pub mod hardware_monitor;
 pub mod history_service;
 pub mod network_health_monitor;
 pub mod orphan_sweeper;

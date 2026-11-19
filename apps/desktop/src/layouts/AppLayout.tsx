@@ -9,7 +9,6 @@ import { PermissionOverlay } from "../components/PermissionOverlay";
 import { open } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 import { useTransferStore } from "../stores/useTransferStore";
-import { useSettingsStore } from "../stores/useSettingsStore";
 import { useSyncStore } from "../stores/useSyncStore";
 import { useDeviceStore } from "../stores/useDeviceStore";
 import { useAppStore } from "../stores/useAppStore";
@@ -27,8 +26,6 @@ export function AppLayout() {
   const respondToBindPrompt = useSyncStore(s => s.respondToBindPrompt);
   const finalizeBindRequest = useSyncStore(s => s.finalizeBindRequest);
   const respondToRequest = useTransferStore(s => s.respondToRequest);
-  const activeTransfers = useTransferStore(s => s.activeTransfers);
-  const settings = useSettingsStore(s => s.settings);
   const localDevice = useDeviceStore(s => s.localDevice);
   const appInfo = useAppStore(s => s.appInfo);
   const [selectingPathFor, setSelectingPathFor] = useState<string | null>(null);
@@ -37,10 +34,6 @@ export function AppLayout() {
   
   const localDeviceName = localDevice?.name || appInfo?.name || "This PC";
   const localOs = localDevice?.os || "Windows";
-
-  const [prevLength, setPrevLength] = useState(() => {
-    return activeTransfers.filter(t => !['cancelled', 'failed', 'completed'].includes(t.status)).length;
-  });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -55,27 +48,6 @@ export function AppLayout() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  useEffect(() => {
-    const activeOngoing = activeTransfers.filter(t => !['cancelled', 'failed', 'completed'].includes(t.status));
-    if (activeOngoing.length > prevLength && location.pathname !== '/transfers') {
-      navigate('/transfers');
-    } else if (activeOngoing.length === 0 && prevLength > 0 && location.pathname === '/transfers') {
-      navigate('/history');
-    }
-    setPrevLength(activeOngoing.length);
-  }, [activeTransfers, navigate, prevLength, location.pathname]);
-
-  // Apply RGB Mode class to body — respects animationsEnabled
-  useEffect(() => {
-    const activeOngoing = activeTransfers.filter(t => !['cancelled', 'failed', 'completed'].includes(t.status));
-    if (settings?.rgbMode !== false && settings?.animationsEnabled !== false && activeOngoing.length > 0) {
-      document.body.classList.add('rgb-mode');
-    } else {
-      document.body.classList.remove('rgb-mode');
-    }
-    return () => document.body.classList.remove('rgb-mode');
-  }, [activeTransfers, settings?.rgbMode, settings?.animationsEnabled]);
 
   // Focus Accept button when an incoming request appears
   useEffect(() => {
@@ -108,14 +80,14 @@ export function AppLayout() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col relative z-10 bg-gradient-to-br from-background to-secondary/20 overflow-hidden">
-        <div className="flex-1 w-full max-w-[1600px] mx-auto h-full overflow-hidden p-3 sm:p-4 md:p-6 relative">
-          <AnimatePresence mode="wait">
+        <div className="flex-1 w-full h-full overflow-hidden p-3 sm:p-3.5 relative">
+          <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={location.pathname}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -2 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
               className="w-full h-full"
             >
               <Outlet />
@@ -146,27 +118,27 @@ export function AppLayout() {
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.96, y: 8, opacity: 0 }}
               transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-              className="bg-card/80 backdrop-blur-xl border border-border/60 text-card-foreground shadow-[var(--shadow-e4)] rounded-2xl p-7 max-w-md w-full overflow-hidden relative"
+              className="bg-card/85 backdrop-blur-xl border border-border/60 text-card-foreground shadow-[var(--shadow-e4)] rounded-2xl p-5 max-w-sm w-full overflow-hidden relative max-h-[85vh] flex flex-col justify-between"
             >
               <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent" />
 
-              <div className="flex items-center gap-4 mb-5">
-                <div className="relative flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10">
+              <div className="flex items-center gap-3 mb-3.5">
+                <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 shrink-0">
                   <span className="absolute inset-0 rounded-xl bg-primary/15 animate-[soft-pulse_2s_ease-in-out_infinite]" />
                   <Download className="w-5 h-5 text-primary relative z-10" />
                 </div>
                 <div className="min-w-0">
-                  <h3 id={`incoming-${req.id}-title`} className="text-lg font-semibold tracking-tight">Incoming File</h3>
+                  <h3 id={`incoming-${req.id}-title`} className="text-base font-semibold tracking-tight">Incoming File</h3>
                   <p className="text-xs text-muted-foreground">Ready to receive</p>
                 </div>
               </div>
 
-              <div className="bg-secondary/40 rounded-xl p-4 mb-6 border border-border/40">
-                <p className="text-xs text-muted-foreground mb-1.5 uppercase tracking-wider font-semibold">Someone wants to send</p>
-                <div className="font-semibold text-[15px] break-all text-foreground mb-2.5 leading-snug">
+              <div className="bg-secondary/40 rounded-xl p-3 mb-4 border border-border/40 min-w-0">
+                <p className="text-[11px] text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Someone wants to send</p>
+                <div className="font-semibold text-sm truncate text-foreground mb-2 leading-snug" title={req.fileName}>
                   {req.fileName}
                 </div>
-                <div className="inline-flex items-center gap-1.5 text-xs font-medium bg-primary/10 text-primary px-2.5 py-1 rounded-full">
+                <div className="inline-flex items-center gap-1.5 text-xs font-medium bg-primary/10 text-primary px-2.5 py-0.5 rounded-full">
                   <FileSize bytes={req.fileSize} />
                 </div>
               </div>

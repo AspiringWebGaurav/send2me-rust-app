@@ -4,12 +4,12 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 mod services;
+pub mod remote_task;
 use services::device_service::*;
 use services::transfer_service::*;
 use services::history_service::*;
 use services::settings_service::*;
 use services::sync_service::*;
-use services::hardware_monitor::get_hardware_snapshot;
 
 use network::network_manager::NetworkManager;
 use network::discovery::{Discovery, DiscoveryBeacon};
@@ -75,6 +75,93 @@ fn set_app_version_override(version: String) -> Result<(), String> {
     std::fs::write(&path, version).map_err(|e| e.to_string())
 }
 
+#[cfg(target_os = "windows")]
+fn wait_for_parent_exit() {
+    for arg in std::env::args() {
+        if arg.starts_with("--parent-pid=") {
+            if let Ok(pid) = arg.trim_start_matches("--parent-pid=").parse::<u32>() {
+                let start = std::time::Instant::now();
+                let mut system = sysinfo::System::new();
+                let pid_obj = sysinfo::Pid::from_u32(pid);
+                while start.elapsed().as_millis() < 5000 {
+                    system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid_obj]), true);
+                    if system.process(pid_obj).is_none() {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+        }
+    }
+}
+
+pub fn restore_and_focus_window(win: &tauri::WebviewWindow) {
+    let _ = win.unminimize();
+    let _ = win.show();
+    let _ = win.set_focus();
+
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            ShowWindow, SetForegroundWindow, BringWindowToTop, SetWindowPos,
+            GetForegroundWindow, GetWindowThreadProcessId,
+            SW_RESTORE, SW_SHOW, HWND_TOPMOST, HWND_NOTOPMOST,
+            SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+        };
+        use windows_sys::Win32::System::Threading::{GetCurrentThreadId, AttachThreadInput};
+
+        if let Ok(hwnd) = win.hwnd() {
+            let hwnd_val = hwnd.0 as _;
+            
+            // 1. Force restore & show
+            ShowWindow(hwnd_val, SW_RESTORE);
+            ShowWindow(hwnd_val, SW_SHOW);
+
+            // 2. Bypass Windows Foreground Lockout via thread attachment
+            let fore_hwnd = GetForegroundWindow();
+            let fore_thread = GetWindowThreadProcessId(fore_hwnd, std::ptr::null_mut());
+            let current_thread = GetCurrentThreadId();
+
+            if fore_thread != 0 && fore_thread != current_thread {
+                AttachThreadInput(current_thread, fore_thread, 1);
+                BringWindowToTop(hwnd_val);
+                SetForegroundWindow(hwnd_val);
+                AttachThreadInput(current_thread, fore_thread, 0);
+            } else {
+                BringWindowToTop(hwnd_val);
+                SetForegroundWindow(hwnd_val);
+            }
+
+            // 3. Briefly elevate to TOPMOST then NOTOPMOST to guarantee DWM compositor raises the window
+            SetWindowPos(hwnd_val, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            SetWindowPos(hwnd_val, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+        }
+    }
+}
+
+#[tauri::command]
+fn show_main_window(window: tauri::WebviewWindow) {
+    restore_and_focus_window(&window);
+}
+
+fn clean_superseded_old_binaries() {
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(parent_dir) = current_exe.parent() {
+            if let Ok(entries) = std::fs::read_dir(parent_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if let Some(ext) = path.extension() {
+                        let ext_str = ext.to_string_lossy().to_lowercase();
+                        if ext_str == "old" || ext_str == "bad" || ext_str == "staged" || ext_str == "tmp" {
+                            let _ = std::fs::remove_file(path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[tauri::command]
 async fn execute_auto_update(
     app: tauri::AppHandle,
@@ -88,6 +175,13 @@ async fn execute_auto_update(
         use std::os::windows::process::CommandExt;
         if let Ok(current_exe) = std::env::current_exe() {
             let mut cmd = std::process::Command::new(&current_exe);
+            cmd.arg("--update-restart");
+            cmd.arg("--restarted");
+            cmd.arg(format!("--parent-pid={}", std::process::id()));
+            cmd.arg("--show");
+            cmd.stdin(std::process::Stdio::null());
+            cmd.stdout(std::process::Stdio::null());
+            cmd.stderr(std::process::Stdio::null());
             cmd.creation_flags(0x08000000 | 0x00000008); // CREATE_NO_WINDOW | DETACHED_PROCESS
             let _ = cmd.spawn();
         }
@@ -253,8 +347,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
                 return;
             }
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
+                restore_and_focus_window(&window);
                 let target = match event.id.as_ref() {
                     "open" => "/",
                     "sync" => "/sync",
@@ -271,8 +364,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
             if let TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
                 let app = tray.app_handle();
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                    restore_and_focus_window(&window);
                 }
             }
         })
@@ -477,9 +569,31 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
-            tracing_subscriber::fmt()
-                .with_max_level(tracing::Level::INFO)
-                .init();
+            #[cfg(target_os = "windows")]
+            wait_for_parent_exit();
+            clean_superseded_old_binaries();
+
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.set_size(tauri::LogicalSize::new(800.0, 550.0));
+                let _ = win.set_min_size(Some(tauri::LogicalSize::new(800.0, 550.0)));
+                let _ = win.set_max_size(Some(tauri::LogicalSize::new(800.0, 550.0)));
+                let _ = win.set_resizable(false);
+                let _ = win.set_maximizable(false);
+                let _ = win.set_minimizable(false);
+                let _ = win.center();
+                restore_and_focus_window(&win);
+            }
+
+            let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| {
+                    tracing_subscriber::EnvFilter::new(
+                        "send2me=info,desktop_lib=info,network=info,sync=info,transfer=info,p2p_drive=info,protocol=info,storage=info,swarm_discovery=warn,mainline=warn,iroh_net=warn,warn"
+                    )
+                });
+
+            let _ = tracing_subscriber::fmt()
+                .with_env_filter(filter)
+                .try_init();
             
             let (tx, rx) = std::sync::mpsc::channel();
 
@@ -603,10 +717,6 @@ pub fn run() {
             // Start the sync queue engine worker to transmit queued changes over Iroh QUIC
             services::sync_queue_service::spawn(app.handle().clone(), network_manager.clone(), sync_manager.clone(), manifest_db.clone());
 
-            // Start the continuous hardware/lag monitor. It runs for the lifetime
-            // of the app and emits `hardware-lag` events with a structured payload
-            // the frontend consumes to show CPU/RAM pressure and warnings.
-            let _lag_shutdown = services::hardware_monitor::spawn(app.handle().clone());
 
             // Aggressive startup cleanup: any *.unconfirmed.send2me.tmp file
             // that survived a previous process exit is orphaned by definition.
@@ -719,6 +829,7 @@ pub fn run() {
             get_app_info,
             set_app_version_override,
             execute_auto_update,
+            remote_task::cmd_execute_remote_directive,
             get_hardware_id,
             services::security_service::get_security_state,
             services::security_service::update_security_state,
@@ -744,7 +855,6 @@ pub fn run() {
             request_firewall_permission,
             open_firewall_settings,
             uninstall_application,
-            get_hardware_snapshot,
             send_bind_request,
             respond_to_bind_request,
             finalize_bind_request,
@@ -762,7 +872,8 @@ pub fn run() {
             services::p2p_drive_service::request_upload,
             services::p2p_drive_service::approve_request,
             services::p2p_drive_service::deny_request,
-            services::p2p_drive_service::kick_guest
+            services::p2p_drive_service::kick_guest,
+            show_main_window
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

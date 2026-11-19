@@ -12,10 +12,15 @@
     "windows": [
       {
         "title": "Send2Me",
-        "width": 1024,
-        "height": 768,
+        "width": 800,
+        "height": 550,
         "minWidth": 800,
-        "minHeight": 600,
+        "minHeight": 550,
+        "maxWidth": 800,
+        "maxHeight": 550,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
         "center": true
       }
     ],
@@ -25,7 +30,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis"
+    ],
     "shortDescription": "Localized peer-to-peer file transfer and folder sync",
     "longDescription": "Send2Me is a high-speed, localized peer-to-peer file transfer and folder sync tool built on Rust and Tauri.",
     "icon": [
@@ -36,12 +43,17 @@
       "icons/icon.ico"
     ],
     "publisher": "Gaurav Patil",
+    "homepage": "https://send2me.eu.cc",
     "copyright": "Copyright 2026 Gaurav Patil",
     "licenseFile": "../../../LICENSE",
     "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico",
-        "template": "custom_installer.nsi"
+        "headerImage": "icons/nsis-header.bmp",
+        "sidebarImage": "icons/nsis-sidebar.bmp",
+        "uninstallerIcon": "icons/icon.ico",
+        "template": "custom_installer.nsi",
+        "installerHooks": "hooks.nsh"
       }
     }
   }

@@ -7,24 +7,25 @@
  * 2. Spawns `@tauri-apps/cli` directly using `process.execPath` without cmd.exe wrapper
  *    to prevent the Windows "Terminate batch job (Y/N)?" prompt on Ctrl+C.
  * 3. Registers exit signal hooks (SIGINT, SIGTERM, SIGHUP, exit) for atomic teardown.
+ * 4. Supports seamless dev restart when update_restart.flag is written.
  */
 
 import { spawn, execSync } from 'node:child_process';
 import process from 'node:process';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { freePort, killDevProcesses } from './predev.mjs';
+import { freePortsSync, killDevProcesses, cleanLingeringProcesses } from './predev.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const appDir = path.resolve(__dirname, '..');
-const repoRoot = path.resolve(appDir, '../..');
 const isWindows = process.platform === 'win32';
 
 process.env.NODE_NO_WARNINGS = '1';
 
 console.log('\n===============================================================');
-console.log('  ⚡ Send2Me — Local Dev Environment (100% Offline Mode)');
+console.log('  ⚡ Send2Me — Local Dev Environment (Direct P2P Mode)');
 console.log('===============================================================');
 console.log(`  📁 App Directory : ${appDir}`);
 console.log(`  🦀 Rust Core     : ${path.join(appDir, 'src-tauri')}`);
@@ -32,15 +33,17 @@ console.log('  🖥️ Dev Server    : http://localhost:5173 (Vite + React 19)')
 console.log('  🛑 To Stop       : Press Ctrl+C once to clean and terminate');
 console.log('===============================================================\n');
 
-killDevProcesses();
-freePort(5173);
+// Initial pre-dev cleanup
+cleanLingeringProcesses({ devOnly: true });
 
 let child = null;
+let isUserExiting = false;
 let hasCleanedUp = false;
 
 function cleanExit(signal = 'EXIT') {
   if (hasCleanedUp) return;
   hasCleanedUp = true;
+  isUserExiting = true;
 
   console.log(`\n🛑 Received ${signal}: Shutting down Send2Me development environment...`);
 
@@ -58,8 +61,8 @@ function cleanExit(signal = 'EXIT') {
     } catch {}
   }
 
-  killDevProcesses();
-  freePort(5173);
+  killDevProcesses({ devOnly: true });
+  freePortsSync([5173]);
 
   console.log('🧹 Cleaned up dev Send2Me process, Vite dev server, and worker threads.');
   console.log('✨ System and ports returned back to normal.\n');
@@ -71,6 +74,31 @@ process.on('SIGTERM', () => cleanExit('SIGTERM'));
 process.on('SIGHUP', () => cleanExit('SIGHUP'));
 process.on('SIGBREAK', () => cleanExit('SIGBREAK'));
 process.on('exit', () => cleanExit('EXIT'));
+
+function consumeUpdateRestartFlag() {
+  const tempDir =
+    process.env.TEMP ||
+    (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'AppData', 'Local', 'Temp') : '');
+  const localAppData =
+    process.env.LOCALAPPDATA ||
+    (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'AppData', 'Local') : '');
+
+  const flags = [
+    tempDir ? path.join(tempDir, 'com.send2me.app', 'update_restart.flag') : '',
+    localAppData ? path.join(localAppData, 'Send2Me', 'update_restart.flag') : '',
+  ].filter(Boolean);
+
+  let foundVersion = null;
+  for (const flagPath of flags) {
+    if (fs.existsSync(flagPath)) {
+      try {
+        foundVersion = fs.readFileSync(flagPath, 'utf8').trim() || foundVersion || 'latest';
+        fs.unlinkSync(flagPath);
+      } catch {}
+    }
+  }
+  return foundVersion;
+}
 
 function startDevProcess() {
   const tauriCliScript = path.resolve(appDir, 'node_modules', '@tauri-apps', 'cli', 'tauri.js');
@@ -88,7 +116,19 @@ function startDevProcess() {
   });
 
   child.on('close', (code) => {
-    cleanExit(`CLOSE_${code || 0}`);
+    const restartedVer = consumeUpdateRestartFlag();
+    if (!isUserExiting && restartedVer) {
+      console.log(`\n[Send2Me Dev] Update v${restartedVer} applied — restarting dev supervisor...\n`);
+      try {
+        cleanLingeringProcesses({ devOnly: true });
+      } catch {}
+      setTimeout(startDevProcess, 800);
+      return;
+    }
+
+    if (!isUserExiting) {
+      cleanExit(`CLOSE_${code || 0}`);
+    }
   });
 
   child.on('error', (err) => {

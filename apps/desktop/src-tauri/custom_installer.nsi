@@ -18,11 +18,56 @@ CRCCheck force
 ; see https://github.com/tauri-apps/tauri/pull/15422#discussion_r3289239624
 !addplugindir ".\Plugins\x86-unicode"
 
+!define INSTALLERICON "{{installer_icon}}"
+!define SIDEBARIMAGE "{{sidebar_image}}"
+!define HEADERIMAGE "{{header_image}}"
+!define UNINSTALLERICON "{{uninstaller_icon}}"
+!define UNINSTALLERHEADERIMAGE "{{uninstaller_header_image}}"
+
+; Installer & Uninstaller Icons (Must be set BEFORE MUI2.nsh and before any Page command)
+!if "${INSTALLERICON}" != ""
+  Icon "${INSTALLERICON}"
+  !define MUI_ICON "${INSTALLERICON}"
+!endif
+
+!if "${UNINSTALLERICON}" != ""
+  UninstallIcon "${UNINSTALLERICON}"
+  !define MUI_UNICON "${UNINSTALLERICON}"
+!else if "${INSTALLERICON}" != ""
+  UninstallIcon "${INSTALLERICON}"
+  !define MUI_UNICON "${INSTALLERICON}"
+!endif
+
+; Installer sidebar image
+!if "${SIDEBARIMAGE}" != ""
+  !define MUI_WELCOMEFINISHPAGE_BITMAP "${SIDEBARIMAGE}"
+!endif
+
+; Enable header images for installer and uninstaller pages when either image is configured.
+!if "${HEADERIMAGE}" != ""
+  !define MUI_HEADERIMAGE
+  !define MUI_HEADERIMAGE_BITMAP "${HEADERIMAGE}"
+!else if "${UNINSTALLERHEADERIMAGE}" != ""
+  !define MUI_HEADERIMAGE
+!endif
+
+; Uninstaller header image
+!if "${UNINSTALLERHEADERIMAGE}" != ""
+  !define MUI_HEADERIMAGE_UNBITMAP "${UNINSTALLERHEADERIMAGE}"
+!else if "${HEADERIMAGE}" != ""
+  !define MUI_HEADERIMAGE_UNBITMAP "${HEADERIMAGE}"
+!endif
+
 !include MUI2.nsh
 !include FileFunc.nsh
 !include x64.nsh
 !include WordFunc.nsh
 !include "utils.nsh"
+{{#if installer_hooks}}
+!include "{{installer_hooks}}"
+{{else}}
+!include "hooks.nsh"
+{{/if}}
 !include "FileAssociation.nsh"
 !include "Win\COM.nsh"
 !include "Win\Propkey.nsh"
@@ -40,11 +85,6 @@ ${StrLoc}
 !define HOMEPAGE "https://send2me.eu.cc"
 !define INSTALLMODE "currentUser"
 !define LICENSE "{{license}}"
-!define INSTALLERICON "{{installer_icon}}"
-!define SIDEBARIMAGE ""
-!define HEADERIMAGE ""
-!define UNINSTALLERICON ""
-!define UNINSTALLERHEADERIMAGE ""
 !define MAINBINARYNAME "{{main_binary_name}}"
 !define MAINBINARYSRCPATH "{{main_binary_path}}"
 !define BUNDLEID "com.send2me.app"
@@ -96,6 +136,7 @@ VIAddVersionKey "FileDescription" "${PRODUCTNAME}"
 VIAddVersionKey "LegalCopyright" "${COPYRIGHT}"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
+VIAddVersionKey "Comments" "Localized high-speed peer-to-peer file transfer and folder sync by Gaurav Patil. Visit https://send2me.eu.cc"
 
 # additional plugins
 !addplugindir "${ADDITIONALPLUGINSPATH}"
@@ -135,38 +176,6 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
   !define SHCTX HKCU
 !endif
 
-; Installer icon
-!if "${INSTALLERICON}" != ""
-  !define MUI_ICON "${INSTALLERICON}"
-!endif
-
-; Installer sidebar image
-!if "${SIDEBARIMAGE}" != ""
-  !define MUI_WELCOMEFINISHPAGE_BITMAP "${SIDEBARIMAGE}"
-!endif
-
-; Enable header images for installer and uninstaller pages when either image is configured.
-!if "${HEADERIMAGE}" != ""
-  !define MUI_HEADERIMAGE
-!else if "${UNINSTALLERHEADERIMAGE}" != ""
-  !define MUI_HEADERIMAGE
-!endif
-
-; Installer header image
-!if "${HEADERIMAGE}" != ""
-  !define MUI_HEADERIMAGE_BITMAP "${HEADERIMAGE}"
-!endif
-
-; Uninstaller header image
-!if "${UNINSTALLERHEADERIMAGE}" != ""
-  !define MUI_HEADERIMAGE_UNBITMAP "${UNINSTALLERHEADERIMAGE}"
-!endif
-
-; Uninstaller icon
-!if "${UNINSTALLERICON}" != ""
-  !define MUI_UNICON "${UNINSTALLERICON}"
-!endif
-
 ; Define registry key to store installer language
 !define MUI_LANGDLL_REGISTRY_ROOT "HKCU"
 !define MUI_LANGDLL_REGISTRY_KEY "${MANUPRODUCTKEY}"
@@ -177,13 +186,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_WELCOME
 
-; 2. License Page (if defined)
-!if "${LICENSE}" != ""
-  !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-  !insertmacro MUI_PAGE_LICENSE "${LICENSE}"
-!endif
-
-; 2.5 Consent Page — explicit, granular consent captured *before* files touch the disk
+; 2. Consent & Acceptance Page
 Page custom ConsentPageShow ConsentPageLeave
 
 Function ConsentPageShow
@@ -204,37 +207,56 @@ Function ConsentPageShow
   ${EndIf}
   ${IfThen} $(^RTL) = 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
 
-  ; Create clean, readable typography
   CreateFont $2 "Segoe UI" 9
   CreateFont $3 "Segoe UI" 9 600
 
-  ${NSD_CreateLabel} 0 0 100% 56u "Send2Me is a peer-to-peer file transfer tool. Please acknowledge before setup:$\r$\n$\r$\n• Direct P2P: Files are sent directly device-to-device with zero cloud storage.$\r$\n• Sole Responsibility: You assume full responsibility for transferred files.$\r$\n• Local Privacy: Pairing history and codes stay strictly on your device."
+  ; Symmetric intro label
+  ${NSD_CreateLabel} 8u 2u 284u 14u "Send2Me transfers files directly peer-to-peer. Please acknowledge before setup:"
   Pop $0
   SendMessage $0 ${WM_SETFONT} $2 1
 
-  ${NSD_CreateCheckbox} 0 60u 100% 16u "I understand and accept the transfer terms and liability. (Required)"
+  ; Symmetric clean bullet points (Concise, simple words)
+  ${NSD_CreateLabel} 8u 18u 284u 34u "• Direct P2P: Files transfer device-to-device with zero cloud storage.$\r$\n• 100% Private: Transfers and pairing codes stay strictly on your device.$\r$\n• Local First: Full transfer speed across your local Wi-Fi network."
+  Pop $0
+  SendMessage $0 ${WM_SETFONT} $2 1
+
+  ; Single-line symmetric Checkbox 1 (Required) - CHECKED BY DEFAULT
+  ${NSD_CreateCheckbox} 8u 56u 284u 14u "I accept the terms of use and liability (Required)"
   Pop $ConsentCheckboxTerms
   SendMessage $ConsentCheckboxTerms ${WM_SETFONT} $3 1
-  ${NSD_SetState} $ConsentCheckboxTerms ${BST_UNCHECKED}
+  ${NSD_SetState} $ConsentCheckboxTerms ${BST_CHECKED}
   ${NSD_OnClick} $ConsentCheckboxTerms ConsentCheckboxTermsClick
 
-  ; Disable Next button initially since terms are unchecked
-  GetDlgItem $0 $HWNDPARENT 1
-  EnableWindow $0 0
-
-  ${NSD_CreateCheckbox} 0 78u 100% 16u "Allow anonymous crash reports to help Gaurav Patil improve Send2Me. (Optional)"
+  ; Single-line symmetric Checkbox 2 (Optional)
+  ${NSD_CreateCheckbox} 8u 72u 284u 14u "Allow anonymous crash reports to help improve Send2Me (Optional)"
   Pop $ConsentCheckboxTelemetry
   SendMessage $ConsentCheckboxTelemetry ${WM_SETFONT} $2 1
   ${NSD_SetState} $ConsentCheckboxTelemetry ${BST_UNCHECKED}
   ${NSD_OnClick} $ConsentCheckboxTelemetry ConsentCheckboxTelemetryClick
 
-  ${NSD_CreateCheckbox} 0 98u 100% 16u "Select all options"
+  ; Single-line symmetric Checkbox 3 (Select all)
+  ${NSD_CreateCheckbox} 8u 88u 284u 14u "Select all options"
   Pop $ConsentCheckboxSelectAll
   SendMessage $ConsentCheckboxSelectAll ${WM_SETFONT} $3 1
   ${NSD_SetState} $ConsentCheckboxSelectAll ${BST_UNCHECKED}
   ${NSD_OnClick} $ConsentCheckboxSelectAll ConsentCheckboxSelectAllClick
 
+  ; Symmetric clean link at bottom
+  ${NSD_CreateLink} 8u 108u 284u 12u "Terms: send2me.eu.cc/terms  •  Developer: gauravpatil.site"
+  Pop $0
+  SendMessage $0 ${WM_SETFONT} $2 1
+  ${NSD_OnClick} $0 ConsentLinkClick
+
+  ; Enable Next button initially since terms are checked by default
+  GetDlgItem $0 $HWNDPARENT 1
+  EnableWindow $0 1
+
   nsDialogs::Show
+FunctionEnd
+
+Function ConsentLinkClick
+  Pop $0
+  ExecShell "open" "https://send2me.eu.cc/terms"
 FunctionEnd
 
 Function ConsentCheckboxTermsClick
@@ -296,75 +318,6 @@ Function ConsentPageLeave
   ${Else}
     StrCpy $ConsentTelemetryOptIn "0"
   ${EndIf}
-FunctionEnd
-
-; 2.6 Legal & Resources Links Page
-Var TermsDialog
-Var LinkTerms
-Var LinkPrivacy
-Var LinkDev
-
-Page custom TermsPrivacyPageShow TermsPrivacyPageLeave
-
-Function TermsPrivacyPageShow
-  ${If} $PassiveMode = 1
-    Abort
-  ${EndIf}
-  
-  !insertmacro MUI_HEADER_TEXT "Legal and Resources" "Policies, documentation, and developer links."
-  
-  nsDialogs::Create 1018
-  Pop $TermsDialog
-  ${If} $TermsDialog == error
-    Abort
-  ${EndIf}
-  ${IfThen} $(^RTL) = 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
-  
-  CreateFont $2 "Segoe UI" 9
-  CreateFont $3 "Segoe UI" 9 600
-
-  ${NSD_CreateLabel} 0 0 100% 24u "Review the full Terms of Service and Privacy Policy for Send2Me online:"
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $3 1
-  
-  ${NSD_CreateLink} 0 28u 100% 14u "➔ View Terms of Service (send2me.eu.cc/terms)"
-  Pop $LinkTerms
-  SendMessage $LinkTerms ${WM_SETFONT} $2 1
-  ${NSD_OnClick} $LinkTerms LinkTermsClick
-  
-  ${NSD_CreateLink} 0 46u 100% 14u "➔ View Privacy Policy (send2me.eu.cc/privacy)"
-  Pop $LinkPrivacy
-  SendMessage $LinkPrivacy ${WM_SETFONT} $2 1
-  ${NSD_OnClick} $LinkPrivacy LinkPrivacyClick
-  
-  ${NSD_CreateLabel} 0 68u 100% 16u "For support, documentation, or to contact the developer:"
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $3 1
-  
-  ${NSD_CreateLink} 0 88u 100% 14u "➔ Developer Portfolio and Contact (www.gauravpatil.online)"
-  Pop $LinkDev
-  SendMessage $LinkDev ${WM_SETFONT} $2 1
-  ${NSD_OnClick} $LinkDev LinkDevClick
-  
-  nsDialogs::Show
-FunctionEnd
-
-Function TermsPrivacyPageLeave
-FunctionEnd
-
-Function LinkTermsClick
-  Pop $0
-  ExecShell "open" "https://send2me.eu.cc/terms"
-FunctionEnd
-
-Function LinkPrivacyClick
-  Pop $0
-  ExecShell "open" "https://send2me.eu.cc/privacy"
-FunctionEnd
-
-Function LinkDevClick
-  Pop $0
-  ExecShell "open" "https://www.gauravpatil.online"
 FunctionEnd
 
 ; 3. Install mode (if it is set to `both`)
@@ -576,89 +529,12 @@ Function PageLeaveReinstall
   reinst_done:
 FunctionEnd
 
-; 4.5 Firewall Configuration Page
-Var FirewallDialog
-Var FirewallCheckbox
-Var FirewallAllowed
-
-Page custom FirewallPageShow FirewallPageLeave
-
-Function FirewallPageShow
-  ${If} $PassiveMode = 1
-    StrCpy $FirewallAllowed "1"
-    Abort
-  ${EndIf}
-  
-  !insertmacro MUI_HEADER_TEXT "Firewall Configuration" "Add a Send2Me firewall exception"
-  
-  nsDialogs::Create 1018
-  Pop $FirewallDialog
-  ${If} $FirewallDialog == error
-    Abort
-  ${EndIf}
-  CreateFont $2 "Segoe UI" 9
-  CreateFont $3 "Segoe UI" 9 600
-
-  ${NSD_CreateLabel} 0 0 100% 28u "An inbound exception is recommended in the Windows Firewall so nearby devices can discover and connect to Send2Me on your local Wi-Fi."
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $2 1
-  
-  ${NSD_CreateCheckbox} 0 34u 100% 18u "Add an exception to Windows Defender Firewall for Send2Me (Recommended)"
-  Pop $FirewallCheckbox
-  SendMessage $FirewallCheckbox ${WM_SETFONT} $3 1
-  ${NSD_SetState} $FirewallCheckbox ${BST_CHECKED}
-  
-  ${NSD_CreateLabel} 0 60u 100% 36u "Note: If using third-party security software (e.g. Norton, Bitdefender), you may also need to allow Send2Me in your antivirus firewall settings."
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $2 1
-  
-  nsDialogs::Show
-FunctionEnd
-
-Function FirewallPageLeave
-  ${NSD_GetState} $FirewallCheckbox $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $FirewallAllowed "1"
-  ${Else}
-    StrCpy $FirewallAllowed "0"
-  ${EndIf}
-FunctionEnd
-
-; 5. Choose install directory page
+; 3. Choose install directory page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_DIRECTORY
 
-; 6. Start menu shortcut page
-Var AppStartMenuFolder
-!if "${STARTMENUFOLDER}" != ""
-  !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-  !define MUI_STARTMENUPAGE_DEFAULTFOLDER "${STARTMENUFOLDER}"
-!else
-  !define MUI_PAGE_CUSTOMFUNCTION_PRE Skip
-!endif
-!insertmacro MUI_PAGE_STARTMENU Application $AppStartMenuFolder
-
-; 7. Installation page
+; 4. Installation page (auto-closes on completion, never stuck on Next/Finish)
 !insertmacro MUI_PAGE_INSTFILES
-
-; 8. Finish page
-;
-; Don't auto jump to finish page after installation page,
-; because the installation page has useful info that can be used debug any issues with the installer.
-!define MUI_FINISHPAGE_NOAUTOCLOSE
-; Use show readme button in the finish page as a button create a desktop shortcut
-!define MUI_FINISHPAGE_SHOWREADME
-!define MUI_FINISHPAGE_SHOWREADME_TEXT "$(createDesktop)"
-!define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateOrUpdateDesktopShortcut
-; Show run app after installation.
-!define MUI_FINISHPAGE_RUN
-!define MUI_FINISHPAGE_RUN_FUNCTION RunMainBinary
-!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-!insertmacro MUI_PAGE_FINISH
-
-Function RunMainBinary
-  ExecShell "open" "$INSTDIR\${MAINBINARYNAME}.exe"
-FunctionEnd
 
 ; Uninstaller Pages
 ; 1. Confirm uninstall page
@@ -735,39 +611,7 @@ UninstPage custom un.MyCustomPage un.MyCustomPageLeave
 ; 2. Uninstalling Page
 !insertmacro MUI_UNPAGE_INSTFILES
 
-; 3. Goodbye & Portfolio Page
-UninstPage custom un.UninstFinishShow
 
-Function un.UninstFinishShow
-  !insertmacro MUI_HEADER_TEXT "Uninstall Complete" "Send2Me has been removed from your device."
-  
-  nsDialogs::Create 1018
-  Pop $0
-  ${If} $0 == error
-    Abort
-  ${EndIf}
-  ${IfThen} $(^RTL) = 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
-
-  ${NSD_CreateLabel} 0 0 100% 24u "Send2Me has been successfully uninstalled. All selected data has been removed."
-  Pop $0
-
-  ${NSD_CreateLabel} 0 30u 100% 24u "Thank you for trying Send2Me! If you have a moment, please check out my other work or get in touch:"
-  Pop $0
-
-  ${NSD_CreateLink} 10u 60u 100% 12u "Visit Developer Portfolio (www.gauravpatil.online)"
-  Pop $1
-  ${NSD_OnClick} $1 un.LinkDevClick
-
-  nsDialogs::Show
-FunctionEnd
-
-Function un.LinkDevClick
-  Pop $0
-  ExecShell "open" "https://www.gauravpatil.online"
-FunctionEnd
-
-; 4. Standard Finish Page
-!insertmacro MUI_UNPAGE_FINISH
 
 ;Languages
 !insertmacro MUI_LANGUAGE "English"
@@ -956,14 +800,10 @@ Section Install
   ; Create Developer Info file dynamically
   FileOpen $0 "$INSTDIR\developer_info.txt" w
   FileWrite $0 "Developer: Gaurav Patil$\r$\n"
-  FileWrite $0 "Portfolio: https://www.gauravpatil.online$\r$\n"
+  FileWrite $0 "Portfolio: https://gauravpatil.site$\r$\n"
   FileWrite $0 "App: Send2Me$\r$\n"
   FileWrite $0 "Domain: https://send2me.eu.cc$\r$\n"
   FileClose $0
-
-  ; Create Crash Reporter script dynamically
-  FileOpen $0 "$INSTDIR\crash_reporter.bat" w
-  FileWrite $0 "@echo off$\r$\n"
 
   ; Write License dynamically
   FileOpen $0 "$INSTDIR\LICENSE_AGREEMENT.txt" w
@@ -979,12 +819,8 @@ Section Install
   ; Write Security Notice
   FileOpen $0 "$INSTDIR\SECURITY_NOTICE.txt" w
   FileWrite $0 "SECURITY & TAMPERING WARNING$\r$\n$\r$\n"
-  FileWrite $0 "This software is digitally signed and protected. Any unauthorized modification to the executable files, installation files, or cryptographic identity files is strictly prohibited.$\r$\n$\r$\n"
-  FileWrite $0 "Tampering will result in the immediate revocation of the software license, and you will be fully liable for any damages or breaches resulting from the tampered software.$\r$\n"
-  FileClose $0
-  FileWrite $0 "echo Gathering crash logs for Send2Me...$\r$\n"
-  FileWrite $0 "echo Please send this to Gaurav Patil via www.gauravpatil.online$\r$\n"
-  FileWrite $0 "pause$\r$\n"
+  FileWrite $0 "This software is digitally protected. Any unauthorized modification to the executable files, installation files, or cryptographic identity files is strictly prohibited.$\r$\n$\r$\n"
+  FileWrite $0 "Tampering will result in the immediate revocation of the software license.$\r$\n"
   FileClose $0
 
   ; Copy resources
@@ -1043,47 +879,29 @@ Section Install
     WriteRegStr SHCTX "${UNINSTKEY}" "HelpLink" "${HOMEPAGE}"
   !endif
 
-  ; Create start menu shortcut
-  !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
-    Call CreateOrUpdateStartMenuShortcut
-  !insertmacro MUI_STARTMENU_WRITE_END
+  ; Create Start Menu Shortcuts
+  CreateDirectory "$SMPROGRAMS\${PRODUCTNAME}"
+  CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 "" "" "${PRODUCTNAME}"
+  !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk"
+  CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 "" "" "${PRODUCTNAME}"
+  !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}.lnk"
 
-  ; Create desktop shortcut for silent and passive installers
-  ; because finish page will be skipped
-  ${If} $PassiveMode = 1
-  ${OrIf} ${Silent}
-    Call CreateOrUpdateDesktopShortcut
-  ${EndIf}
+  ; Create Desktop Shortcut Unconditionally
+  CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 "" "" "${PRODUCTNAME}"
+  !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
 
   !ifmacrodef NSIS_HOOK_POSTINSTALL
     !insertmacro NSIS_HOOK_POSTINSTALL
   !endif
 
-  ; Add Firewall Exception if permitted
-  ${If} $FirewallAllowed == "1"
-    DetailPrint "Adding Firewall Exception..."
-    nsExec::ExecToLog 'powershell -WindowStyle Hidden -Command "Start-Process netsh -ArgumentList ''advfirewall firewall add rule name=\"Send2Me (In)\" dir=in action=allow program=\"$INSTDIR\${MAINBINARYNAME}.exe\" enable=yes profile=any'' -Verb RunAs -Wait; Start-Process netsh -ArgumentList ''advfirewall firewall add rule name=\"Send2Me (Out)\" dir=out action=allow program=\"$INSTDIR\${MAINBINARYNAME}.exe\" enable=yes profile=any'' -Verb RunAs -Wait; Start-Process netsh -ArgumentList ''advfirewall firewall add rule name=\"Send2Me\" dir=in action=allow program=\"$INSTDIR\${MAINBINARYNAME}.exe\" enable=yes profile=any'' -Verb RunAs -Wait"'
-    nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Send2Me (In)" dir=in action=allow program="$INSTDIR\${MAINBINARYNAME}.exe" enable=yes profile=any'
-    nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Send2Me (Out)" dir=out action=allow program="$INSTDIR\${MAINBINARYNAME}.exe" enable=yes profile=any'
-    nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Send2Me" dir=in action=allow program="$INSTDIR\${MAINBINARYNAME}.exe" enable=yes profile=any'
-  ${EndIf}
-
-  ; Auto close this page for passive mode
-  ${If} $PassiveMode = 1
-    SetAutoClose true
-  ${EndIf}
+  ; Always auto-close installation page on completion (frictionless zero-click finish, matching CP & Downex)
+  SetAutoClose true
 SectionEnd
 
 Function .onInstSuccess
-  ; Check for `/R` flag only in silent and passive installers because
-  ; GUI installer has a toggle for the user to (re)start the app
-  ${If} $PassiveMode = 1
-  ${OrIf} ${Silent}
-    ${GetOptions} $CMDLINE "/R" $R0
-    ${IfNot} ${Errors}
-      ${GetOptions} $CMDLINE "/ARGS" $R0
-      nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" "$R0"
-    ${EndIf}
+  ; Automatically launch Send2Me in clean detached mode (zero-click finish, never stuck on Next/Finish)
+  ${If} $UpdateMode <> 1
+    nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" ""
   ${EndIf}
 FunctionEnd
 
@@ -1152,15 +970,10 @@ Section Uninstall
   ${If} $UpdateMode <> 1
     !insertmacro DeleteAppUserModelId
 
-    ; Remove start menu shortcut
-    !insertmacro MUI_STARTMENU_GETFOLDER Application $AppStartMenuFolder
-    !insertmacro IsShortcutTarget "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
-    Pop $0
-    ${If} $0 = 1
-      !insertmacro UnpinShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
-      Delete "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
-      RMDir "$SMPROGRAMS\$AppStartMenuFolder"
-    ${EndIf}
+    ; Remove start menu shortcuts
+    !insertmacro UnpinShortcut "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk"
+    Delete "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk"
+    RMDir "$SMPROGRAMS\${PRODUCTNAME}"
     !insertmacro IsShortcutTarget "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
     Pop $0
     ${If} $0 = 1
@@ -1236,15 +1049,15 @@ Section Uninstall
     !insertmacro NSIS_HOOK_POSTUNINSTALL
   !endif
 
-  ; Auto close if passive mode or updating
-  ${If} $PassiveMode = 1
-  ${OrIf} $UpdateMode = 1
-    SetAutoClose true
-  ${EndIf}
-
-  ; Open website after full uninstall
-  ExecShell "open" "https://send2me.eu.cc"
+  ; Auto-close uninstaller upon completion (frictionless zero-click finish, never stuck on Next/Close)
+  SetAutoClose true
 SectionEnd
+
+Function un.onUninstSuccess
+  ${If} $UpdateMode <> 1
+    ExecShell "open" "https://send2me.eu.cc/uninstalled"
+  ${EndIf}
+FunctionEnd
 
 Function RestorePreviousInstallLocation
   ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
@@ -1264,45 +1077,11 @@ Function un.SkipIfPassive
 FunctionEnd
 
 Function CreateOrUpdateStartMenuShortcut
-  ; We used to use product name as MAINBINARYNAME
-  ; migrate old shortcuts to target the new MAINBINARYNAME
-  StrCpy $R0 0
-
-  !insertmacro IsShortcutTarget "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\$OldMainBinaryName"
-  Pop $0
-  ${If} $0 = 1
-    !insertmacro SetShortcutTarget "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
-    StrCpy $R0 1
-  ${EndIf}
-
-  !insertmacro IsShortcutTarget "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\$OldMainBinaryName"
-  Pop $0
-  ${If} $0 = 1
-    !insertmacro SetShortcutTarget "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
-    StrCpy $R0 1
-  ${EndIf}
-
-  ${If} $R0 = 1
-    Return
-  ${EndIf}
-
-  ; Skip creating shortcut if in update mode or no shortcut mode
-  ; but always create if migrating from wix
-  ${If} $WixMode = 0
-    ${If} $UpdateMode = 1
-    ${OrIf} $NoShortcutMode = 1
-      Return
-    ${EndIf}
-  ${EndIf}
-
-  !if "${STARTMENUFOLDER}" != ""
-    CreateDirectory "$SMPROGRAMS\$AppStartMenuFolder"
-    CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
-    !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
-  !else
-    CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
-    !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}.lnk"
-  !endif
+  CreateDirectory "$SMPROGRAMS\${PRODUCTNAME}"
+  CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 "" "" "${PRODUCTNAME}"
+  !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk"
+  CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 "" "" "${PRODUCTNAME}"
+  !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}.lnk"
 FunctionEnd
 
 Function CreateOrUpdateDesktopShortcut

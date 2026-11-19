@@ -112,44 +112,49 @@ export function ReceiveModal({ isOpen, onClose }: { isOpen: boolean; onClose: ()
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose}>
-      <div className="flex flex-col items-center text-center space-y-5">
+      <div className="flex flex-col items-center text-center space-y-3.5">
 
-        <div className="w-14 h-14 rounded-2xl bg-success/10 flex items-center justify-center">
-          <DownloadCloud className="w-7 h-7 text-success" />
+        <div className="w-12 h-12 rounded-xl bg-success/10 flex items-center justify-center shrink-0">
+          <DownloadCloud className="w-6 h-6 text-success" />
         </div>
 
         <div>
-          <h2 className="text-xl font-semibold tracking-tight mb-1">Receive Files</h2>
-          <p className="text-muted-foreground text-sm max-w-sm leading-relaxed">
-            Ready to receive. Share this connect code with the sender.
+          <h2 className="text-lg font-semibold tracking-tight mb-0.5">Receive Files</h2>
+          <p className="text-muted-foreground text-xs max-w-xs leading-relaxed">
+            {state === 'receiving' ? "Receiving file stream securely via direct P2P." : "Share this connect code with the sender."}
           </p>
         </div>
 
-        <div className="w-full p-5 rounded-2xl border border-border/40 bg-secondary/30 flex flex-col items-center justify-center space-y-3 relative overflow-hidden">
-          <div className="absolute inset-0 opacity-[0.07] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-success via-transparent to-transparent pointer-events-none" />
-
-          <div className="z-10 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Your Receive Code</div>
-          <div className="z-10 text-4xl font-mono font-bold tracking-[0.25em] text-foreground py-1 tabular-nums">
-            {receiveCode}
-          </div>
-          <div className="z-10">
-            <Button variant="secondary" size="sm" onClick={handleCopy} disabled={!localDevice?.pairingCode}>
-              {copied ? <CheckCircle2 className="w-3.5 h-3.5 mr-1.5 text-success" /> : <Copy className="w-3.5 h-3.5 mr-1.5" />}
-              {copied ? "Copied" : "Copy Code"}
-            </Button>
-          </div>
-        </div>
-
         {state === 'waiting' && (
-          <div className="w-full pt-1 flex flex-col items-center justify-center text-muted-foreground gap-2">
-            <Loader2 className="w-4 h-4 animate-spin opacity-60" />
-            <span className="text-xs font-medium">Waiting for sender to connect…</span>
-          </div>
+          <>
+            <div className="w-full p-3.5 rounded-xl border border-border/40 bg-secondary/30 flex flex-col items-center justify-center space-y-2 relative overflow-hidden">
+              <div className="absolute inset-0 opacity-[0.07] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-success via-transparent to-transparent pointer-events-none" />
+
+              <div className="z-10 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Your Receive Code</div>
+              <div className="z-10 text-3xl font-mono font-bold tracking-[0.25em] text-foreground py-0.5 tabular-nums">
+                {receiveCode}
+              </div>
+              <div className="z-10">
+                <Button variant="secondary" size="sm" onClick={handleCopy} disabled={!localDevice?.pairingCode} className="h-7 text-xs px-2.5">
+                  {copied ? <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-success" /> : <Copy className="w-3.5 h-3.5 mr-1" />}
+                  {copied ? "Copied" : "Copy Code"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="w-full pt-1 flex flex-col items-center justify-center text-muted-foreground gap-1.5">
+              <Loader2 className="w-4 h-4 animate-spin opacity-60 text-primary" />
+              <span className="text-xs font-medium">Waiting for sender to connect…</span>
+            </div>
+          </>
         )}
 
         {state === 'receiving' && (
-          <div className="w-full pt-1 flex flex-col items-center justify-center gap-4">
-            <h3 className="text-sm font-semibold text-primary">Receiving File…</h3>
+          <div className="w-full pt-1 flex flex-col items-center justify-center gap-3">
+            <div className="inline-flex items-center gap-1.5 bg-primary/10 border border-primary/20 px-3 py-1 rounded-full text-xs font-semibold text-primary">
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              Connected · Code {receiveCode}
+            </div>
 
             <div className="w-full max-w-xs flex flex-col gap-1.5">
               <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">

@@ -21,8 +21,8 @@ import { FileSize } from "../components/ui/FileSize";
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 const stagger = {
-  initial: { opacity: 0, y: 16 },
-  animate: (i: number) => ({ opacity: 1, y: 0, transition: { duration: 0.32, delay: i * 0.06, ease: EASE } }),
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: { duration: 0.2, ease: EASE } },
 };
 
 export function Dashboard() {
@@ -132,10 +132,10 @@ export function Dashboard() {
   ];
 
   return (
-    <div className="h-full w-full flex flex-col gap-4 lg:gap-5">
+    <div className="h-full w-full flex flex-col gap-3">
 
       {/* Action Cards */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3 shrink-0 h-28 sm:h-32 lg:h-40">
+      <div className="grid grid-cols-3 gap-2.5 sm:gap-3 shrink-0 h-28">
         {actionCards.map((card, i) => {
           const Icon = card.icon;
           const iconClassName = (card as any).iconClassName || "";
@@ -201,16 +201,16 @@ export function Dashboard() {
       </div>
 
       {/* Main Workspace */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-4 lg:gap-5 min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-row gap-3 min-h-0 overflow-hidden">
 
         {/* P2P Drive Gateway */}
         <P2PDriveCard />
 
         {/* Recent Transfers */}
         <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.45, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2, ease: EASE }}
           className="flex-1 min-h-0"
         >
           <Card className="h-full flex flex-col overflow-hidden rounded-2xl">

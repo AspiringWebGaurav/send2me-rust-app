@@ -327,7 +327,7 @@ pub async fn handle_incoming_connection(
             Ok(m) => m,
             Err(e) => {
                 tracing::warn!("bi-stream: control read failed: {}", e);
-                let _ = send_pre_flight(send_stream, false, false).await;
+                let _ = send_pre_flight(&mut send_stream, false, false, true).await;
                 continue;
             }
         };
@@ -449,7 +449,7 @@ pub async fn handle_incoming_connection(
             StreamMessage::Control(m) => m,
             _ => {
                 tracing::warn!("bi-stream: expected Control or Bind frame, got other");
-                let _ = send_pre_flight(send_stream, false, false).await;
+                let _ = send_pre_flight(&mut send_stream, false, false, true).await;
                 continue;
             }
         };
@@ -482,23 +482,25 @@ pub async fn handle_incoming_connection(
 }
 
 async fn send_pre_flight(
-    mut send_stream: iroh::net::endpoint::SendStream,
+    send_stream: &mut iroh::net::endpoint::SendStream,
     accepted: bool,
     has_space: bool,
+    finish: bool,
 ) -> anyhow::Result<()> {
     let resp = StreamMessage::PreFlightResponse { accepted, has_space, already_exists: false };
     let bytes = serde_json::to_vec(&resp)?;
     send_stream.write_u32(bytes.len() as u32).await?;
     send_stream.write_all(&bytes).await?;
     send_stream.flush().await?;
-    // Close the send half so the sender's read_u32 can return promptly.
-    let _ = send_stream.finish();
+    if finish {
+        let _ = send_stream.finish();
+    }
     Ok(())
 }
 
 async fn start_incoming_transfer(
     mut meta: transfer::stream::FileMetadata,
-    send_stream: iroh::net::endpoint::SendStream,
+    mut send_stream: iroh::net::endpoint::SendStream,
     conn_state: ConnectionState,
     app: AppHandle,
     registry: TransferRegistry,
@@ -567,7 +569,7 @@ async fn start_incoming_transfer(
                             tracing::warn!("Conflict detected! Saving incoming file as {}", target_rel_path);
                         } else {
                             tracing::info!("Duplicate sync update ignored for {}", target_rel_path);
-                            let _ = send_pre_flight(send_stream, false, false).await;
+                            let _ = send_pre_flight(&mut send_stream, false, false, true).await;
                             return Ok(());
                         }
                     }
@@ -585,7 +587,7 @@ async fn start_incoming_transfer(
         let save_dir = resolve_downloads_dir(&settings.downloads_folder);
         if let Err(e) = tokio::fs::create_dir_all(&save_dir).await {
             tracing::warn!("downloads dir {} missing and could not be created: {}", save_dir.display(), e);
-            let _ = send_pre_flight(send_stream, false, false).await;
+            let _ = send_pre_flight(&mut send_stream, false, false, true).await;
             return Ok(());
         }
         
@@ -643,7 +645,7 @@ async fn start_incoming_transfer(
 
     let has_space = has_enough_space(&destination_dir, meta.file_size);
     if !accepted || !has_space {
-        send_pre_flight(send_stream, accepted, has_space).await?;
+        send_pre_flight(&mut send_stream, accepted, has_space, true).await?;
         return Ok(());
     }
 
@@ -655,7 +657,7 @@ async fn start_incoming_transfer(
             Ok(p) => p,
             Err(e) => {
                 tracing::error!("could not resolve free destination path: {}", e);
-                send_pre_flight(send_stream, false, false).await?;
+                send_pre_flight(&mut send_stream, false, false, true).await?;
                 return Ok(());
             }
         }
@@ -668,7 +670,7 @@ async fn start_incoming_transfer(
     if let Some(parent) = tmp_path.parent() {
         if let Err(e) = tokio::fs::create_dir_all(parent).await {
             tracing::error!("cannot create destination dir {}: {}", parent.display(), e);
-            send_pre_flight(send_stream, false, false).await?;
+            send_pre_flight(&mut send_stream, false, false, true).await?;
             return Ok(());
         }
     }
@@ -693,7 +695,7 @@ async fn start_incoming_transfer(
                 tmp_path.display(),
                 e
             );
-            send_pre_flight(send_stream, false, false).await?;
+            send_pre_flight(&mut send_stream, false, false, true).await?;
             return Ok(());
         }
     }
@@ -755,7 +757,7 @@ async fn start_incoming_transfer(
     );
 
     // 9. Send pre-flight ACK NOW so the sender can start opening uni-streams.
-    send_pre_flight(send_stream, true, true).await?;
+    send_pre_flight(&mut send_stream, true, true, false).await?;
 
     // 10. Spawn the transfer runner. From here on, the CleanupGuard owns
     //     tmp-file removal on every failure path including panic.
@@ -773,6 +775,7 @@ async fn start_incoming_transfer(
             app,
             transfer_start,
             sync_meta_clone,
+            send_stream,
         )
         .await;
     });
@@ -788,6 +791,7 @@ async fn run_transfer(
     app: AppHandle,
     transfer_start: Instant,
     sync_meta: Option<transfer::stream::SyncMetadata>,
+    mut send_stream: iroh::net::endpoint::SendStream,
 ) {
     // Spawn the coalesced progress heartbeat.
     let progress_task = spawn_network_progress_task(state.clone(), registry.clone(), app.clone());
@@ -819,6 +823,13 @@ async fn run_transfer(
 
     if state.cancelled.load(Ordering::SeqCst) {
         debug_log("CANCELLED — returning early");
+        let comp = StreamMessage::TransferCompleted { success: false };
+        if let Ok(bytes) = serde_json::to_vec(&comp) {
+            let _ = send_stream.write_u32(bytes.len() as u32).await;
+            let _ = send_stream.write_all(&bytes).await;
+            let _ = send_stream.flush().await;
+        }
+        let _ = send_stream.finish();
         // CleanupGuard drop path handles temp deletion + registry.
         return;
     }
@@ -828,6 +839,13 @@ async fn run_transfer(
     // `failed` flag set by the connection-close watcher racing against us.
     if !woke_from_done && state.failed.load(Ordering::SeqCst) {
         debug_log("FAILED (woke from terminated) — returning early");
+        let comp = StreamMessage::TransferCompleted { success: false };
+        if let Ok(bytes) = serde_json::to_vec(&comp) {
+            let _ = send_stream.write_u32(bytes.len() as u32).await;
+            let _ = send_stream.write_all(&bytes).await;
+            let _ = send_stream.flush().await;
+        }
+        let _ = send_stream.finish();
         return;
     }
     // Clear any spurious failed flag so downstream stages don't see it.
@@ -847,6 +865,13 @@ async fn run_transfer(
             state.tmp_path.exists(),
         ));
         state.mark_failed("verification failed");
+        let comp = StreamMessage::TransferCompleted { success: false };
+        if let Ok(bytes) = serde_json::to_vec(&comp) {
+            let _ = send_stream.write_u32(bytes.len() as u32).await;
+            let _ = send_stream.write_all(&bytes).await;
+            let _ = send_stream.flush().await;
+        }
+        let _ = send_stream.finish();
         return;
     }
     debug_log("Verification passed, starting finalization");
@@ -855,6 +880,15 @@ async fn run_transfer(
     let finalize_result = run_finalization(&state, &app).await;
     match finalize_result {
         Ok(final_path) => {
+            // Signal sender that receiver verified and saved file to disk!
+            let comp = StreamMessage::TransferCompleted { success: true };
+            if let Ok(bytes) = serde_json::to_vec(&comp) {
+                let _ = send_stream.write_u32(bytes.len() as u32).await;
+                let _ = send_stream.write_all(&bytes).await;
+                let _ = send_stream.flush().await;
+            }
+            let _ = send_stream.finish();
+
             let msg = format!("Saved to: {}", final_path.display());
             emit_local_stage(&app, &state.id, "done", 100, &msg);
             // Disarm the cleanup guard — the tmp file has been renamed away.
@@ -945,6 +979,13 @@ async fn run_transfer(
             }
         }
         Err(e) => {
+            let comp = StreamMessage::TransferCompleted { success: false };
+            if let Ok(bytes) = serde_json::to_vec(&comp) {
+                let _ = send_stream.write_u32(bytes.len() as u32).await;
+                let _ = send_stream.write_all(&bytes).await;
+                let _ = send_stream.flush().await;
+            }
+            let _ = send_stream.finish();
             state.mark_failed(format!("finalize failed: {}", e));
             // CleanupGuard drop handles it.
         }
@@ -1060,9 +1101,6 @@ async fn run_verification(state: &Arc<TransferState>, app: &AppHandle) -> bool {
         false
     };
 
-    // Artificial delay to make the "Compiling" stage visible in the UI.
-    tokio::time::sleep(Duration::from_millis(600)).await;
-
     stop.store(true, Ordering::SeqCst);
     let _ = hb.await;
     emit_local_stage(app, &state.id, "compiling", 100, "Compiling");
@@ -1105,9 +1143,6 @@ async fn run_finalization(
         last_bytes: state.file_size,
     };
     let _ = app.emit("transfer-progress", finalizing);
-
-    // Artificial delay to make the "Finalizing" stage visible in the UI.
-    tokio::time::sleep(Duration::from_millis(600)).await;
 
     stop_finalize.store(true, Ordering::SeqCst);
     let _ = hb1.await;
@@ -1200,9 +1235,6 @@ async fn run_finalization(
             }
         }
     };
-
-    // Artificial delay to make the "Renaming" / "System Processing" stage visible in the UI.
-    tokio::time::sleep(Duration::from_millis(800)).await;
 
     stop_rename.store(true, Ordering::SeqCst);
     let _ = hb2.await;
@@ -1351,7 +1383,7 @@ async fn handle_chunk_stream(
         .await?;
 
     let mut hasher = blake3::Hasher::new();
-    let mut buffer = vec![0u8; 2 * 1024 * 1024];
+    let mut buffer = vec![0u8; 256 * 1024];
     let mut bytes_read: u64 = 0;
     while bytes_read < header.chunk_size {
         if state.is_terminal() {

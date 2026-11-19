@@ -2,18 +2,13 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Zap, WifiOff } from "lucide-react";
-import { motion } from "framer-motion";
-import { useAppStore } from "../stores/useAppStore";
+import { ScheduleMeVersionLockup } from "./ScheduleMeVersionLockup";
 
 export function Footer() {
-  const appInfo = useAppStore(s => s.appInfo);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [isP2PActive, setIsP2PActive] = useState<boolean>(false);
-  const [hwid, setHwid] = useState<string>('');
 
   useEffect(() => {
-    invoke<string>('get_hardware_id').then(setHwid).catch(console.error);
-
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
@@ -43,17 +38,11 @@ export function Footer() {
     };
   }, []);
 
-  const displayVersion = appInfo?.version || "0.1.0";
-
   return (
-    <motion.footer
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-      className="h-9 border-t border-border/60 bg-panel/75 backdrop-blur-xl flex items-center justify-between px-2 sm:px-4 md:px-6 z-50 shrink-0 text-[10px] sm:text-[11px] font-medium tracking-wide w-full"
-    >
-      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        <div className={`flex items-center gap-1.5 sm:gap-2 transition-colors ${isOnline ? 'text-foreground/80' : 'text-danger'}`}>
+    <footer className="relative h-9 border-t border-border/60 bg-panel/75 backdrop-blur-xl flex items-center justify-between px-3 sm:px-4 md:px-5 z-50 shrink-0 text-[10px] sm:text-[11px] font-medium tracking-wide w-full select-none">
+      {/* Left: System & P2P Status */}
+      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 z-10">
+        <div className={`flex items-center gap-1.5 transition-colors ${isOnline ? 'text-foreground/80' : 'text-danger'}`}>
           <span className="relative flex h-1.5 w-1.5">
             {isOnline ? (
               <>
@@ -68,7 +57,7 @@ export function Footer() {
           <span className="sm:hidden">{isOnline ? "Online" : "Offline"}</span>
         </div>
         <div className="w-px h-3 bg-border/70"></div>
-        <div className={`flex items-center gap-1 sm:gap-1.5 transition-colors ${isP2PActive ? 'text-muted-foreground' : 'text-danger/80'}`}>
+        <div className={`flex items-center gap-1.5 transition-colors ${isP2PActive ? 'text-muted-foreground' : 'text-danger/80'}`}>
           {isP2PActive ? (
             <Zap className="w-3 h-3 text-primary" />
           ) : (
@@ -79,34 +68,33 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="items-center gap-3 text-muted-foreground/70 hidden md:flex shrink-0">
-        <button
-          onClick={() => openUrl('https://send2me.eu.cc/terms')}
-          className="hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
-        >
-          Terms
-        </button>
-        <div className="w-px h-3 bg-border/70"></div>
-        <button
-          onClick={() => openUrl('https://send2me.eu.cc/privacy')}
-          className="hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
-        >
-          Privacy
-        </button>
+      {/* Center: App Version Lockup (Centering with left & right breathing space) */}
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-auto">
+        <ScheduleMeVersionLockup />
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3 text-muted-foreground shrink-0">
-        {hwid && (
-          <>
-            <span className="hidden sm:block tabular-nums bg-secondary/30 px-2 py-0.5 rounded border border-border/50 text-[10px]" title="Hardware ID">
-              HWID: {hwid}
-            </span>
-            <div className="w-px h-3 bg-border/70 hidden sm:block"></div>
-          </>
-        )}
+      {/* Right: Terms, Privacy, and GitHub at the right end */}
+      <div className="flex items-center gap-2 sm:gap-2.5 text-muted-foreground shrink-0 z-10">
+        <div className="items-center gap-2 text-muted-foreground/70 hidden sm:flex shrink-0">
+          <button
+            onClick={() => openUrl('https://send2me.eu.cc/terms')}
+            className="hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1 cursor-pointer"
+          >
+            Terms
+          </button>
+          <div className="w-px h-3 bg-border/70"></div>
+          <button
+            onClick={() => openUrl('https://send2me.eu.cc/privacy')}
+            className="hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1 cursor-pointer"
+          >
+            Privacy
+          </button>
+          <div className="w-px h-3 bg-border/70"></div>
+        </div>
         <button
           onClick={() => openUrl('https://github.com/AspiringWebGaurav')}
-          className="group flex items-center gap-1.5 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
+          className="group flex items-center gap-1.5 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1 cursor-pointer"
+          title="GitHub Repository"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -125,9 +113,7 @@ export function Footer() {
           </svg>
           <span className="transition-colors group-hover:text-primary hidden sm:inline">GitHub</span>
         </button>
-        <div className="w-px h-3 bg-border/70"></div>
-        <span className="tabular-nums whitespace-nowrap">App v{displayVersion}</span>
       </div>
-    </motion.footer>
+    </footer>
   );
 }

@@ -46,19 +46,19 @@ impl DynamicChunker {
         let mb: u64 = 1024 * 1024;
 
         let cap = match (topology, &settings.power_mode) {
-            (NetworkTopology::Lan, PowerMode::MaxThroughput) => 128,
-            (NetworkTopology::Lan, PowerMode::Medium) => 32,
-            (NetworkTopology::Lan, PowerMode::Balanced) => 16,
-            (NetworkTopology::Wan, PowerMode::MaxThroughput) => 32,
-            (NetworkTopology::Wan, PowerMode::Medium) => 16,
-            (NetworkTopology::Wan, PowerMode::Balanced) => 8,
+            (NetworkTopology::Lan, PowerMode::MaxThroughput) => 16,
+            (NetworkTopology::Lan, PowerMode::Medium) => 8,
+            (NetworkTopology::Lan, PowerMode::Balanced) => 4,
+            (NetworkTopology::Wan, PowerMode::MaxThroughput) => 8,
+            (NetworkTopology::Wan, PowerMode::Medium) => 4,
+            (NetworkTopology::Wan, PowerMode::Balanced) => 2,
         }
         .min(settings.max_parallel_connections);
 
         let target_chunk_mb: u64 = match (topology, &settings.power_mode) {
-            (NetworkTopology::Lan, PowerMode::MaxThroughput) => 8,
-            (NetworkTopology::Lan, PowerMode::Medium) => 12,
-            (NetworkTopology::Lan, PowerMode::Balanced) => 16,
+            (NetworkTopology::Lan, PowerMode::MaxThroughput) => 16,
+            (NetworkTopology::Lan, PowerMode::Medium) => 24,
+            (NetworkTopology::Lan, PowerMode::Balanced) => 32,
             (NetworkTopology::Wan, PowerMode::MaxThroughput) => 32,
             (NetworkTopology::Wan, PowerMode::Medium) => 48,
             (NetworkTopology::Wan, PowerMode::Balanced) => 64,

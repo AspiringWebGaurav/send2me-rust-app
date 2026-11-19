@@ -183,19 +183,19 @@ export const DriveGuest = () => {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 p-4 md:p-6 overflow-y-auto min-h-0">
+      <div className="flex-1 flex flex-row gap-3 p-2 overflow-hidden min-h-0">
         
         {/* Remote File Browser */}
         <motion.div 
           custom={0} initial="initial" animate="animate" variants={stagger}
-          className="flex-[2] flex flex-col min-h-[300px]"
+          className="flex-[2] flex flex-col min-h-0 overflow-hidden"
         >
-          <Card className="flex-1 flex flex-col rounded-2xl overflow-hidden border-primary/20 shadow-xl bg-card">
-          <div className="p-4 border-b border-border/40 bg-secondary/30 flex justify-between items-center">
-            <h3 className="font-bold text-sm">Remote Files</h3>
+          <Card className="flex-1 flex flex-col rounded-2xl overflow-hidden border-primary/20 shadow-md bg-card min-h-0">
+          <div className="p-3 border-b border-border/40 bg-secondary/30 flex justify-between items-center shrink-0">
+            <h3 className="font-bold text-xs">Remote Files</h3>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="flex-1 overflow-y-auto p-2 min-h-0">
             {virtualFiles.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center opacity-50">
                 <Cloud className="w-12 h-12 mb-4" />

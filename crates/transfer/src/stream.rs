@@ -118,9 +118,8 @@ impl TransferStream {
     /// sending a huge length prefix.
     pub const MAX_CONTROL_MESSAGE_SIZE: usize = 64 * 1024;
 
-    /// Read buffer per chunk task. Large enough for QUIC batching, small enough
-    /// that a 128-chunk fan-out never allocates gigabytes of buffer memory.
-    const READ_BUFFER_SIZE: usize = 2 * 1024 * 1024;
+    /// High-throughput streaming buffer per chunk task (256 KB L2/L3 cache-aligned).
+    const READ_BUFFER_SIZE: usize = 256 * 1024;
 
     #[allow(clippy::too_many_arguments)]
     pub async fn send_file_parallel(

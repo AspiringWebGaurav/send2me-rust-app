@@ -169,30 +169,30 @@ export const DriveRoom = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-full w-full gap-4 md:gap-6 p-4 md:p-6 lg:p-8 bg-background/50 overflow-y-auto min-h-0">
+    <div className="flex flex-row h-full w-full gap-3 p-1 overflow-hidden min-h-0">
       
       {/* Left Column: Room & Files Area */}
       <motion.div 
         custom={0} initial="initial" animate="animate" variants={stagger}
-        className="flex-1 flex flex-col gap-6 max-w-full lg:max-w-xl"
+        className="flex-1 flex flex-col min-h-0 overflow-hidden"
       >
-        <Card className="flex flex-col relative overflow-hidden rounded-3xl border-primary/20 shadow-xl bg-card">
+        <Card className="flex-1 flex flex-col relative overflow-hidden rounded-2xl border-primary/20 shadow-md bg-card min-h-0">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-primary/50" />
-          <div className="flex flex-col p-6 border-b border-border/40 bg-secondary/20 relative">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-4">
-                <div className={`w-4 h-4 rounded-full ${isOnline ? 'bg-success animate-pulse shadow-[0_0_12px_hsl(var(--success)/0.6)]' : 'bg-muted-foreground'}`} />
+          <div className="flex flex-col p-3.5 border-b border-border/40 bg-secondary/20 relative shrink-0">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-3 h-3 rounded-full ${isOnline ? 'bg-success animate-pulse shadow-[0_0_8px_hsl(var(--success)/0.6)]' : 'bg-muted-foreground'}`} />
                 <div>
-                  <h2 className="font-extrabold text-2xl tracking-tight leading-tight">P2P Host Room</h2>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-sm font-medium text-muted-foreground">Status: {isOnline ? 'Online' : 'Offline'}</span>
+                  <h2 className="font-bold text-base tracking-tight leading-tight">P2P Host Room</h2>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">Status: {isOnline ? 'Online' : 'Offline'}</span>
                   </div>
                 </div>
               </div>
               <Button 
                 variant={isOnline ? "danger" : "default"} 
-                size="lg"
-                className="font-bold rounded-xl shadow-md transition-all hover:scale-105"
+                size="sm"
+                className="font-semibold rounded-lg shadow-sm h-8 px-3"
                 onClick={isOnline ? handleCloseRoom : handleStartRoom}
               >
                 {isOnline ? 'Close Room' : 'Start Room'}
@@ -200,51 +200,51 @@ export const DriveRoom = () => {
             </div>
             
             {isOnline && (
-              <div className="flex items-center gap-3 bg-background/50 p-3 rounded-xl border border-border/50 w-max">
-                <span className="text-sm text-muted-foreground font-medium">Connect Code:</span>
-                <span className="font-mono bg-primary/10 text-primary px-3 py-1 rounded-lg font-bold text-lg tracking-widest">{connectCode}</span>
+              <div className="flex items-center gap-2 bg-background/50 px-2.5 py-1 rounded-lg border border-border/50 w-max">
+                <span className="text-xs text-muted-foreground font-medium">Connect Code:</span>
+                <span className="font-mono bg-primary/10 text-primary px-2 py-0.5 rounded font-bold text-sm tracking-wider">{connectCode}</span>
               </div>
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2 min-h-[300px]">
+          <div className="flex-1 overflow-y-auto p-2 min-h-0">
             {virtualFiles.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center opacity-60 p-8 text-center">
-                <div className="w-20 h-20 rounded-full bg-secondary/50 flex items-center justify-center mb-6">
-                  <Server className={`w-10 h-10 ${isOnline ? 'text-primary' : 'text-muted-foreground'}`} />
+              <div className="h-full flex flex-col items-center justify-center opacity-60 p-4 text-center">
+                <div className="w-12 h-12 rounded-xl bg-secondary/50 flex items-center justify-center mb-2.5">
+                  <Server className={`w-6 h-6 ${isOnline ? 'text-primary' : 'text-muted-foreground'}`} />
                 </div>
-                <h3 className="text-lg font-bold mb-2">{isOnline ? 'Room is Online' : 'Drop Files Here'}</h3>
-                <p className="text-sm text-muted-foreground max-w-[250px] mb-6">
-                  {isOnline ? 'Guests can connect using your code. Add files to share them instantly.' : 'Start the room and add files for zero-copy, lightning fast sharing.'}
+                <h3 className="text-sm font-semibold mb-1">{isOnline ? 'Room is Online' : 'Drop Files Here'}</h3>
+                <p className="text-xs text-muted-foreground max-w-[220px] mb-3">
+                  {isOnline ? 'Guests connect with your code to browse files.' : 'Start the room and add files for zero-copy sharing.'}
                 </p>
-                <Button variant="outline" size="lg" onClick={handleAddFiles} className="opacity-100 rounded-xl font-semibold shadow-sm">
-                  <Plus className="w-4 h-4 mr-2" />
+                <Button variant="outline" size="sm" onClick={handleAddFiles} className="opacity-100 rounded-lg font-medium shadow-sm h-8">
+                  <Plus className="w-3.5 h-3.5 mr-1" />
                   Browse Files
                 </Button>
               </div>
             ) : (
-              <div className="flex flex-col gap-3 p-4">
-                <div className="flex items-center justify-between pb-3 mb-2 border-b border-border/40">
-                  <h3 className="text-base font-bold text-foreground/80">Shared Files <Badge variant="secondary" className="ml-2 bg-secondary/50">{virtualFiles.length}</Badge></h3>
-                  <Button variant="default" size="sm" onClick={handleAddFiles} className="rounded-lg font-semibold shadow-sm hover:scale-105 transition-transform">
-                    <Plus className="w-4 h-4 mr-1" />
+              <div className="flex flex-col gap-2 p-2">
+                <div className="flex items-center justify-between pb-2 mb-1 border-b border-border/40">
+                  <h3 className="text-xs font-bold text-foreground/80">Shared Files <Badge variant="secondary" className="ml-1 text-[10px] bg-secondary/50">{virtualFiles.length}</Badge></h3>
+                  <Button variant="default" size="sm" onClick={handleAddFiles} className="h-7 text-xs px-2 rounded-md font-medium shadow-sm">
+                    <Plus className="w-3.5 h-3.5 mr-1" />
                     Add File
                   </Button>
                 </div>
-                <div className="grid gap-2">
+                <div className="grid gap-1.5">
                   {virtualFiles.map(file => (
-                    <div key={file.id} className="group flex items-center justify-between p-4 rounded-xl bg-secondary/20 hover:bg-secondary/60 border border-transparent hover:border-primary/20 transition-all shadow-sm">
-                      <div className="flex items-center gap-4">
-                        <div className="p-2.5 rounded-lg bg-background shadow-sm">
-                          <FileIcon className="w-6 h-6 text-primary" />
+                    <div key={file.id} className="group flex items-center justify-between p-2 rounded-lg bg-secondary/20 hover:bg-secondary/60 border border-transparent hover:border-primary/20 transition-all shadow-sm">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="p-1.5 rounded-md bg-background shadow-sm shrink-0">
+                          <FileIcon className="w-4 h-4 text-primary" />
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-sm truncate max-w-[220px]">{file.name}</span>
-                          <span className="text-xs font-medium text-muted-foreground">{formatSize(file.size)}</span>
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-semibold text-xs truncate max-w-[150px]">{file.name}</span>
+                          <span className="text-[10px] font-medium text-muted-foreground">{formatSize(file.size)}</span>
                         </div>
                       </div>
-                      <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleRemoveFile(file.id)}>
-                        <X className="w-4 h-4" />
+                      <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleRemoveFile(file.id)}>
+                        <X className="w-3.5 h-3.5" />
                       </Button>
                     </div>
                   ))}
@@ -258,41 +258,41 @@ export const DriveRoom = () => {
       {/* Right Column: Guests & Queue */}
       <motion.div 
         custom={1} initial="initial" animate="animate" variants={stagger}
-        className="flex-[1.5] flex flex-col gap-6"
+        className="flex-1 flex flex-col gap-2.5 min-h-0 overflow-hidden"
       >
         
         {/* Active Guests */}
-        <Card className="flex flex-col rounded-3xl overflow-hidden border-primary/10 shadow-lg min-h-[180px]">
-          <div className="p-5 border-b border-border/40 bg-secondary/10 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Users className="w-4 h-4 text-primary" />
+        <Card className="flex flex-col rounded-2xl overflow-hidden border-primary/10 shadow-md max-h-[160px] min-h-0">
+          <div className="p-3 border-b border-border/40 bg-secondary/10 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="p-1 bg-primary/10 rounded-md">
+                <Users className="w-3.5 h-3.5 text-primary" />
               </div>
-              <h3 className="font-extrabold text-base tracking-tight">Active Guests</h3>
+              <h3 className="font-bold text-xs tracking-tight">Active Guests</h3>
             </div>
-            <Badge variant="secondary" className="px-3 py-1 font-bold text-sm bg-background border-border/50 shadow-sm">{activeGuests.length}</Badge>
+            <Badge variant="secondary" className="px-2 py-0.5 font-bold text-xs bg-background border-border/50">{activeGuests.length}</Badge>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 bg-card/50">
+          <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5 bg-card/50 min-h-0">
             {activeGuests.length === 0 ? (
-              <div className="m-auto text-center opacity-40 py-4">
-                <p className="text-sm font-medium">Waiting for connections...</p>
+              <div className="m-auto text-center opacity-40 py-2">
+                <p className="text-xs font-medium">Waiting for connections...</p>
               </div>
             ) : (
-              <div className="grid gap-2">
+              <div className="grid gap-1.5">
                 {activeGuests.map(guest => (
-                  <div key={guest.node_id} className="flex items-center justify-between p-3 rounded-xl bg-background border border-border/40 shadow-sm hover:border-primary/20 transition-all">
-                    <div className="flex items-center gap-3">
-                      <span className="w-2.5 h-2.5 rounded-full bg-success animate-pulse shadow-[0_0_8px_hsl(var(--success)/0.5)]" />
-                      <span className="text-sm font-bold">{guest.name}</span>
+                  <div key={guest.node_id} className="flex items-center justify-between p-2 rounded-lg bg-background border border-border/40 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-success animate-pulse shadow-[0_0_6px_hsl(var(--success)/0.5)]" />
+                      <span className="text-xs font-semibold">{guest.name}</span>
                     </div>
                     <Button 
                       variant="ghost" 
                       size="icon" 
-                      className="h-8 w-8 rounded-full text-destructive hover:bg-destructive/10 transition-colors"
+                      className="h-7 w-7 rounded-full text-destructive hover:bg-destructive/10 transition-colors"
                       onClick={() => kickGuest(guest.node_id)}
                       title="Kick Guest"
                     >
-                      <ShieldAlert className="w-4 h-4" />
+                      <ShieldAlert className="w-3.5 h-3.5" />
                     </Button>
                   </div>
                 ))}
@@ -302,15 +302,15 @@ export const DriveRoom = () => {
         </Card>
 
         {/* Approval Queue */}
-        <Card className="flex-1 flex flex-col rounded-3xl overflow-hidden border-warning/20 shadow-xl min-h-[300px]">
+        <Card className="flex-1 flex flex-col rounded-2xl overflow-hidden border-warning/20 shadow-md min-h-0">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-warning to-warning/50" />
-          <div className="p-5 border-b border-border/40 bg-warning/5 flex items-center justify-between relative">
-            <h3 className="font-extrabold text-base tracking-tight text-foreground flex items-center gap-2">
+          <div className="p-3 border-b border-border/40 bg-warning/5 flex items-center justify-between relative shrink-0">
+            <h3 className="font-bold text-xs tracking-tight text-foreground flex items-center gap-1.5">
               Pending Requests
-              {pendingRequests.length > 0 && <span className="relative flex h-2.5 w-2.5 ml-1"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-warning"></span></span>}
+              {pendingRequests.length > 0 && <span className="relative flex h-2 w-2 ml-1"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-warning"></span></span>}
             </h3>
             {pendingRequests.length > 0 && (
-              <Badge variant="warning" className="px-3 py-1 font-bold text-sm bg-warning text-warning-foreground shadow-sm">{pendingRequests.length}</Badge>
+              <Badge variant="warning" className="px-2 py-0.5 font-bold text-xs bg-warning text-warning-foreground">{pendingRequests.length}</Badge>
             )}
           </div>
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-card/30">

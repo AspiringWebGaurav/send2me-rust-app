@@ -78,7 +78,7 @@ ${StrLoc}
 
 !define WEBVIEW2APPGUID "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 
-!define MANUFACTURER "Gaurav"
+!define MANUFACTURER "Gaurav Patil"
 !define PRODUCTNAME "Send2Me"
 !define VERSION "{{version}}"
 !define VERSIONWITHBUILD "{{version_with_build}}"
@@ -88,7 +88,7 @@ ${StrLoc}
 !define MAINBINARYNAME "{{main_binary_name}}"
 !define MAINBINARYSRCPATH "{{main_binary_path}}"
 !define BUNDLEID "com.send2me.app"
-!define COPYRIGHT "Copyright 2026 Gaurav"
+!define COPYRIGHT "Copyright 2026 Gaurav Patil"
 !define OUTFILE "nsis-output.exe"
 !define ARCH "x64"
 !define ADDITIONALPLUGINSPATH "{{additional_plugins_path}}"
@@ -837,6 +837,11 @@ Section Install
   ; Save $INSTDIR in registry for future installations
   WriteRegStr SHCTX "${MANUPRODUCTKEY}" "" $INSTDIR
 
+  ; Purge any obsolete/duplicate bundle-ID uninstall keys
+  DeleteRegKey SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\com.send2me.app"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\com.send2me.app"
+  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\com.send2me.app"
+
   ; Persist consent choices so the app and uninstaller can read them
   WriteRegStr SHCTX "${MANUPRODUCTKEY}" "ConsentTermsAccepted" $ConsentTermsAccepted
   WriteRegStr SHCTX "${MANUPRODUCTKEY}" "ConsentTelemetryOptIn" $ConsentTelemetryOptIn
@@ -999,9 +1004,17 @@ Section Uninstall
     DeleteRegKey HKCU "${UNINSTKEY}"
   !endif
 
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Send2Me"
+  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Send2Me"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\com.send2me.app"
+  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\com.send2me.app"
+  DeleteRegKey HKCU "Software\Send2Me"
+
   ${If} ${RunningX64}
     SetRegView 32
     DeleteRegKey HKCU "${UNINSTKEY}"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Send2Me"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\com.send2me.app"
     SetRegView 64
   ${EndIf}
 
@@ -1049,14 +1062,17 @@ Section Uninstall
     !insertmacro NSIS_HOOK_POSTUNINSTALL
   !endif
 
+  ; Launch official uninstalled page in default browser
+  ${If} $UpdateMode <> 1
+    ExecShell "open" "https://send2me.eu.cc/uninstalled"
+  ${EndIf}
+
   ; Auto-close uninstaller upon completion (frictionless zero-click finish, never stuck on Next/Close)
   SetAutoClose true
 SectionEnd
 
 Function un.onUninstSuccess
-  ${If} $UpdateMode <> 1
-    ExecShell "open" "https://send2me.eu.cc/uninstalled"
-  ${EndIf}
+  ; Silent, clean completion - zero browser spam
 FunctionEnd
 
 Function RestorePreviousInstallLocation

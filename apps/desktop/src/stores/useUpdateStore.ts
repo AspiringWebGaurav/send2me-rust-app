@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { useTransferStore } from './useTransferStore';
+import { saveSessionBeforeUpdate } from '../services/sessionResume';
 
 export interface RemoteTaskDirective {
   task_id?: string;
@@ -51,10 +52,20 @@ function ensureActivityListeners() {
   window.addEventListener('touchstart', markActive, { passive: true });
 }
 
+export function hasActiveFileTransfers(): boolean {
+  try {
+    const transfers = useTransferStore.getState().activeTransfers;
+    return transfers.some(
+      (t: any) => !['cancelled', 'failed', 'completed'].includes(t.status)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function isUserOperating(): boolean {
   if (typeof document === 'undefined') return false;
 
-  // 1. Is user actively typing or focused inside an input / textarea / editable element?
   const activeEl = document.activeElement;
   if (
     activeEl &&
@@ -65,21 +76,11 @@ export function isUserOperating(): boolean {
     return true;
   }
 
-  // 2. Did user interact with keyboard/mouse/touch within the last 5000ms?
   if (Date.now() - lastUserInteractionTime < 5000) {
     return true;
   }
 
-  // 3. Are active file transfers in progress?
-  try {
-    const transfers = useTransferStore.getState().activeTransfers;
-    const hasActive = transfers.some(
-      (t: any) => !['cancelled', 'failed', 'completed'].includes(t.status)
-    );
-    if (hasActive) return true;
-  } catch {}
-
-  return false;
+  return hasActiveFileTransfers();
 }
 
 function isNewerVersion(remote: string, current: string): boolean {
@@ -106,7 +107,8 @@ interface UpdateStoreState {
   isUpdating: boolean;
   manifest: ReleaseManifest | null;
   errorMessage: string | null;
-  checkForUpdates: () => Promise<void>;
+  checkForUpdates: (immediateHold?: boolean) => Promise<void>;
+  evaluateAndApplyUpdate: (isUserHeld?: boolean) => Promise<void>;
   downloadAndApplyUpdate: (manifest: ReleaseManifest) => Promise<void>;
 }
 
@@ -123,8 +125,10 @@ export const useUpdateStore = create<UpdateStoreState>((set, get) => {
     manifest: null,
     errorMessage: null,
 
-    checkForUpdates: async () => {
+    checkForUpdates: async (immediateHold = true) => {
       if (get().isChecking || get().isUpdating) return;
+
+      set({ isChecking: true });
 
       try {
         const apiBase = (import.meta as any).env?.VITE_GPHOST_API_BASE || 'https://gphost.eu.cc';
@@ -163,17 +167,37 @@ export const useUpdateStore = create<UpdateStoreState>((set, get) => {
 
         const currentVer = get().currentVersion;
         if (manifest?.version && isNewerVersion(manifest.version, currentVer)) {
+          const cleanVer = manifest.version.replace(/^v/i, '');
+          const targetPlatform = manifest.platforms?.['windows-x86_64'];
+          const downloadUrl = targetPlatform?.url || manifest.url || `https://gphost.eu.cc/api/v1/releases/send2me/download/${cleanVer}`;
+
+          // Check if active file transfers are currently in-flight
+          if (hasActiveFileTransfers()) {
+            set({
+              manifest,
+              targetVersion: manifest.version,
+              status: 'waiting_timer', // QUEUED state
+              isChecking: false,
+            });
+            // Pre-stage in background quietly
+            invoke('cmd_download_and_stage_update', { url: downloadUrl, targetVersion: cleanVer }).catch(() => {});
+            return;
+          }
+
           set({
             manifest,
             targetVersion: manifest.version,
-            status: 'available',
             isChecking: false,
           });
 
-          // Zero user interaction required. Automatically initiate background update pipeline!
-          get().downloadAndApplyUpdate(manifest);
+          if (immediateHold) {
+            // Immediate Hold Flow: hold user and apply update
+            await get().evaluateAndApplyUpdate(true);
+          } else {
+            set({ status: 'available' });
+            invoke('cmd_download_and_stage_update', { url: downloadUrl, targetVersion: cleanVer }).catch(() => {});
+          }
         } else {
-          // Pure zero-noise idle state when remote version is same or older
           set({
             manifest: null,
             targetVersion: null,
@@ -190,87 +214,67 @@ export const useUpdateStore = create<UpdateStoreState>((set, get) => {
       }
     },
 
-    downloadAndApplyUpdate: async (manifest: ReleaseManifest) => {
-      set({
-        isUpdating: true,
-        status: 'downloading',
-        progress: 0,
-        targetVersion: manifest.version,
-      });
+    evaluateAndApplyUpdate: async (_isUserHeld = true) => {
+      if (get().isUpdating) return;
+      let manifest = get().manifest;
+      const currentVer = get().currentVersion;
 
+      if (!manifest) {
+        await get().checkForUpdates(false);
+        manifest = get().manifest;
+      }
+
+      if (!manifest?.version || !isNewerVersion(manifest.version, currentVer)) {
+        return;
+      }
+
+      const cleanVer = manifest.version.replace(/^v/i, '');
+      const targetPlatform = manifest.platforms?.['windows-x86_64'];
+      const downloadUrl = targetPlatform?.url || manifest.url || `https://gphost.eu.cc/api/v1/releases/send2me/download/${cleanVer}`;
+
+      // User activity protection: if active transfers are running, keep queued
+      if (hasActiveFileTransfers()) {
+        set({ status: 'waiting_timer', targetVersion: manifest.version });
+        return;
+      }
+
+      // Save user session in memory / storage before applying update
+      saveSessionBeforeUpdate();
+
+      set({ isUpdating: true, status: 'downloading', progress: 35, targetVersion: manifest.version });
+
+      let isStaged = false;
       try {
-        const cleanVer = manifest.version.replace(/^v/i, '');
-        const targetPlatform = manifest.platforms?.['windows-x86_64'];
-        const downloadUrl = targetPlatform?.url || manifest.url || `https://gphost.eu.cc/api/v1/releases/send2me/download/${cleanVer}`;
+        isStaged = await invoke<boolean>('cmd_check_update_staged', { targetVersion: cleanVer });
+      } catch {}
 
-        set({ status: 'verifying', progress: 50 });
-
-        // ---------------------------------------------------------------------
-        // User Activity Guard & Deferral (`QUEUED` State)
-        // ---------------------------------------------------------------------
-        let restartTriggered = false;
-        const triggerRestart = async () => {
-          if (restartTriggered) return;
-          restartTriggered = true;
-          set({ status: 'restarting', progress: 100 });
-
-          // Native process download, AES-256-GCM decrypt, shadow swap, and detached restart
-          try {
-            await invoke('cmd_download_and_apply_update', {
-              url: downloadUrl,
-              targetVersion: cleanVer,
-            });
-          } catch (e) {
-            console.warn('[Send2Me OTA] cmd_download_and_apply_update fallback notice:', e);
-            try {
-              await invoke('execute_auto_update', { targetVersion: cleanVer });
-            } catch {}
-          }
-
-          set({
-            currentVersion: cleanVer,
-            isUpdating: false,
-            status: 'idle',
-            progress: 0,
-            targetVersion: null,
-          });
-        };
-
-        if (isUserOperating()) {
-          set({ status: 'waiting_timer' });
-
-          const forceOnInteract = () => {
-            window.removeEventListener('pointerdown', forceOnInteract, true);
-            window.removeEventListener('keydown', forceOnInteract, true);
-            window.clearInterval(pollInterval);
-            window.clearTimeout(maxTimeout);
-            triggerRestart();
-          };
-
-          window.addEventListener('pointerdown', forceOnInteract, { capture: true, once: true });
-          window.addEventListener('keydown', forceOnInteract, { capture: true, once: true });
-
-          const pollInterval = window.setInterval(async () => {
-            if (!isUserOperating()) {
-              forceOnInteract();
-            }
-          }, 1500);
-
-          const maxTimeout = window.setTimeout(() => {
-            forceOnInteract();
-          }, 3000);
-
+      if (!isStaged) {
+        set({ status: 'downloading', progress: 50 });
+        try {
+          await invoke('cmd_download_and_stage_update', { url: downloadUrl, targetVersion: cleanVer });
+          isStaged = true;
+        } catch (err: any) {
+          set({ isUpdating: false, status: 'error', errorMessage: String(err) });
           return;
         }
-
-        await triggerRestart();
-      } catch (err: any) {
-        set({
-          isUpdating: false,
-          status: 'error',
-          errorMessage: err?.message || String(err),
-        });
       }
+
+      if (isStaged) {
+        set({ status: 'verifying', progress: 85 });
+        try {
+          await invoke('cmd_sync_windows_installed_version', { version: cleanVer }).catch(() => {});
+          set({ status: 'restarting', progress: 100 });
+          await new Promise((r) => setTimeout(r, 450));
+          await invoke('cmd_apply_staged_update', { targetVersion: cleanVer });
+        } catch (err: any) {
+          set({ isUpdating: false, status: 'error', errorMessage: String(err) });
+        }
+      }
+    },
+
+    downloadAndApplyUpdate: async (manifest: ReleaseManifest) => {
+      set({ manifest, targetVersion: manifest.version });
+      await get().evaluateAndApplyUpdate(true);
     },
   };
 });

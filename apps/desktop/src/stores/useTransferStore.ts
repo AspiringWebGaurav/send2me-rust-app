@@ -181,6 +181,15 @@ export const useTransferStore = create<TransferState>((set, get) => ({
       // so the persisted history view reflects the just-finished transfer without a manual reload.
       if (becameTerminal) {
         useHistoryStore.getState().fetchHistory();
+        // If an update was held/queued in memory waiting for active transfer to finish, trigger it now
+        setTimeout(async () => {
+          try {
+            const { useUpdateStore, hasActiveFileTransfers } = await import('./useUpdateStore');
+            if (useUpdateStore.getState().status === 'waiting_timer' && !hasActiveFileTransfers()) {
+              useUpdateStore.getState().evaluateAndApplyUpdate(true);
+            }
+          } catch {}
+        }, 600);
       }
     });
 

@@ -73,7 +73,9 @@ fn set_app_version_override(version: String) -> Result<(), String> {
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     path.push("version_override.txt");
     
-    std::fs::write(&path, version).map_err(|e| e.to_string())
+    let res = std::fs::write(&path, &version).map_err(|e| e.to_string());
+    ota::sync_windows_installed_version(&version);
+    res
 }
 
 #[cfg(target_os = "windows")]
@@ -188,8 +190,56 @@ async fn cmd_download_and_apply_update(
 }
 
 #[tauri::command]
+fn cmd_check_update_staged(target_version: String) -> bool {
+    ota::is_update_staged(&target_version)
+}
+
+#[tauri::command]
+async fn cmd_download_and_stage_update(
+    url: String,
+    target_version: String,
+) -> Result<String, String> {
+    ota::download_and_stage_update(&url, &target_version)
+        .await
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn cmd_apply_staged_update(
+    app: tauri::AppHandle,
+    target_version: String,
+) -> Result<(), String> {
+    ota::apply_staged_update_and_restart(&app, &target_version)
+}
+
+#[tauri::command]
+fn cmd_sync_windows_installed_version(app: AppHandle, version: Option<String>) -> Result<String, String> {
+    let ver = version.unwrap_or_else(|| get_app_info(app).version);
+    ota::sync_windows_installed_version(&ver);
+    Ok(ver)
+}
+
+#[tauri::command]
 fn cmd_clean_superseded_old_binaries() -> Result<bool, String> {
     ota::clean_superseded_old_binaries()
+}
+
+#[tauri::command]
+fn cmd_trim_memory() -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        extern "system" {
+            fn GetCurrentProcess() -> isize;
+            fn SetProcessWorkingSetSize(hProcess: isize, dwMinimumWorkingSetSize: usize, dwMaximumWorkingSetSize: usize) -> i32;
+        }
+        unsafe {
+            let proc = GetCurrentProcess();
+            SetProcessWorkingSetSize(proc, usize::MAX, usize::MAX);
+        }
+        return Ok(true);
+    }
+    #[cfg(not(target_os = "windows"))]
+    Ok(false)
 }
 
 #[tauri::command]
@@ -349,6 +399,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
             }
             if let Some(window) = app.get_webview_window("main") {
                 restore_and_focus_window(&window);
+                let _ = window.emit("ui-opened", ());
                 let target = match event.id.as_ref() {
                     "open" => "/",
                     "sync" => "/sync",
@@ -366,6 +417,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
                 let app = tray.app_handle();
                 if let Some(window) = app.get_webview_window("main") {
                     restore_and_focus_window(&window);
+                    let _ = window.emit("ui-opened", ());
                 }
             }
         })
@@ -573,6 +625,10 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             wait_for_parent_exit();
             clean_superseded_old_binaries();
+
+            // Dynamically synchronize Windows Installed Apps Registry on boot
+            let current_info = get_app_info(app.handle().clone());
+            ota::sync_windows_installed_version(&current_info.version);
 
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.set_size(tauri::LogicalSize::new(800.0, 550.0));
@@ -833,7 +889,12 @@ pub fn run() {
             execute_auto_update,
             cmd_fetch_update_manifest,
             cmd_download_and_apply_update,
+            cmd_check_update_staged,
+            cmd_download_and_stage_update,
+            cmd_apply_staged_update,
+            cmd_sync_windows_installed_version,
             cmd_clean_superseded_old_binaries,
+            cmd_trim_memory,
             remote_task::cmd_execute_remote_directive,
             get_hardware_id,
             services::security_service::get_security_state,

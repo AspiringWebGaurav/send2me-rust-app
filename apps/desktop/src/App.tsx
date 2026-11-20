@@ -10,6 +10,7 @@ import { DriveRoom } from "./pages/DriveRoom";
 import { DriveGuest } from "./pages/DriveGuest";
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { MotionConfig } from "framer-motion";
 import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
 
@@ -20,6 +21,7 @@ import { disposeHistoryListeners } from "./stores/useHistoryStore";
 import { useSettingsStore } from "./stores/useSettingsStore";
 import { useAppStore } from "./stores/useAppStore";
 import { useUpdateStore } from "./stores/useUpdateStore";
+import { restoreSessionAfterUpdate } from "./services/sessionResume";
 
 export default function App() {
   const settings = useSettingsStore(state => state.settings);
@@ -36,17 +38,32 @@ export default function App() {
     useTransferStore.getState().initListeners();
     useSyncStore.getState().initListeners();
 
-    // Automated background update lifecycle (1:1 ScheduleMe parity: 2.5s silent boot check, zero user clicks required)
+    // Check and restore previous session after an update restart (frees working set memory)
+    const restored = restoreSessionAfterUpdate();
+    if (restored?.route && window.location.hash !== `#${restored.route}`) {
+      window.location.hash = restored.route;
+    }
+
+    // Smooth UI mounting delay (1.5s) on boot so homepage renders cleanly before checking updates
     const updateTimeout = setTimeout(() => {
-      useUpdateStore.getState().checkForUpdates();
-    }, 2500);
+      useUpdateStore.getState().checkForUpdates(true);
+    }, 1500);
+
+    let unlistenUiOpened: (() => void) | undefined;
+    listen('ui-opened', () => {
+      setTimeout(() => {
+        useUpdateStore.getState().checkForUpdates(true);
+      }, 1200);
+    }).then(u => { unlistenUiOpened = u; }).catch(() => {});
 
     let lastFocusCheck = Date.now();
     const handleFocus = () => {
       const now = Date.now();
-      if (now - lastFocusCheck > 30000) {
+      if (now - lastFocusCheck > 8000) {
         lastFocusCheck = now;
-        useUpdateStore.getState().checkForUpdates();
+        setTimeout(() => {
+          useUpdateStore.getState().checkForUpdates(true);
+        }, 1200);
       }
     };
     window.addEventListener('focus', handleFocus);
@@ -75,6 +92,7 @@ export default function App() {
     return () => {
       clearTimeout(updateTimeout);
       clearInterval(updateInterval);
+      if (unlistenUiOpened) unlistenUiOpened();
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('online', handleOnline);
       disposeDeviceListeners();

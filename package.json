@@ -17,6 +17,10 @@
     "test": "npm run test:lifecycle && npm run test:playwright",
     "build": "npm --prefix apps/desktop run build",
     "build:frontend": "npm --prefix apps/desktop run build:frontend",
+    "ship": "node scripts/ship.mjs",
+    "vault:pack": "node scripts/vault.mjs pack",
+    "vault:unpack": "node scripts/vault.mjs unpack",
+    "vault:status": "node scripts/vault.mjs status",
     "lint": "npm --prefix apps/desktop run lint",
     "preview": "npm --prefix apps/desktop run preview",
     "tauri": "npm --prefix apps/desktop run tauri"

@@ -82,6 +82,9 @@ settings.json
 .tauri/
 **/.tauri/**
 **/ship.mjs
+scripts/*
+!scripts/vault.mjs
+apps/desktop/scripts/*
 *.pem
 *.key
 *.p12

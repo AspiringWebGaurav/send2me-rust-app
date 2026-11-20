@@ -15,6 +15,7 @@ import { useAppStore } from "../stores/useAppStore";
 import { FileSize } from "../components/ui/FileSize";
 import { FolderSyncOnboardingModal } from "../components/FolderSyncOnboardingModal";
 import { BindTermsModal } from "../components/BindTermsModal";
+import { UpdateHoldingOverlay } from "../components/UpdateHoldingOverlay";
 import { Toaster } from 'sonner';
 
 export function AppLayout() {
@@ -98,6 +99,7 @@ export function AppLayout() {
 
       <Footer />
       <ToastContainer />
+      <UpdateHoldingOverlay />
 
       {/* Incoming Transfer Requests */}
       <AnimatePresence>

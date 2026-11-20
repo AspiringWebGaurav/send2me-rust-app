@@ -6,6 +6,7 @@ use tokio::sync::RwLock;
 mod services;
 pub mod remote_task;
 pub mod ota;
+pub mod autostart;
 use services::device_service::*;
 use services::transfer_service::*;
 use services::history_service::*;
@@ -145,6 +146,16 @@ pub fn restore_and_focus_window(win: &tauri::WebviewWindow) {
 #[tauri::command]
 fn show_main_window(window: tauri::WebviewWindow) {
     restore_and_focus_window(&window);
+}
+
+#[tauri::command]
+fn is_autostart_registered() -> bool {
+    autostart::is_autostart_registered()
+}
+
+#[tauri::command]
+fn set_autostart_registered(enable: bool) -> Result<(), String> {
+    autostart::set_autostart_registered(enable)
 }
 
 fn clean_superseded_old_binaries() {
@@ -630,6 +641,10 @@ pub fn run() {
             let current_info = get_app_info(app.handle().clone());
             ota::sync_windows_installed_version(&current_info.version);
 
+            let is_background_boot = std::env::args().any(|arg| {
+                arg == "--background" || arg == "--silent" || arg == "--minimized" || arg == "--autostart" || arg == "-b"
+            });
+
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.set_size(tauri::LogicalSize::new(800.0, 550.0));
                 let _ = win.set_min_size(Some(tauri::LogicalSize::new(800.0, 550.0)));
@@ -638,7 +653,11 @@ pub fn run() {
                 let _ = win.set_maximizable(false);
                 let _ = win.set_minimizable(false);
                 let _ = win.center();
-                restore_and_focus_window(&win);
+                if !is_background_boot {
+                    restore_and_focus_window(&win);
+                } else {
+                    let _ = win.hide();
+                }
             }
 
             let filter = tracing_subscriber::EnvFilter::try_from_default_env()
@@ -757,6 +776,8 @@ pub fn run() {
             app.manage(services::p2p_drive_service::DriveStateContainer(drive_manager.clone()));
             let _ = setup_tray(app.handle());
             let _ = ota::clean_superseded_old_binaries();
+            let auto_start_pref = cached_settings.blocking_read().auto_start;
+            autostart::sync_autostart_on_boot(auto_start_pref);
 
             // Start the Sync State Manager (The "Sync Brain")
             services::sync_state_manager::start_sync_state_manager(manifest_db.clone(), app.handle().clone());
@@ -939,7 +960,9 @@ pub fn run() {
             services::p2p_drive_service::approve_request,
             services::p2p_drive_service::deny_request,
             services::p2p_drive_service::kick_guest,
-            show_main_window
+            show_main_window,
+            is_autostart_registered,
+            set_autostart_registered
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

@@ -3,6 +3,7 @@ export interface AppSettings {
   downloadsFolder: string;
   autoAcceptTransfers: boolean;
   autoUpdate: boolean;
+  autoStart: boolean;
   animationsEnabled: boolean;
   notificationsEnabled: boolean;
   language: string;

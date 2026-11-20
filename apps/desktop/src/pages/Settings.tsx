@@ -247,6 +247,14 @@ export function Settings() {
                     />
                   </Row>
 
+                  <Row title="Start with Windows" description="Automatically launch and mount Send2Me in the system tray when Windows boots" divider>
+                    <Toggle
+                      checked={settings.autoStart ?? true}
+                      onChange={() => updateSettings({ autoStart: !(settings.autoStart ?? true) })}
+                      label="Toggle start with Windows"
+                    />
+                  </Row>
+
                   <Row title="Desktop Notifications" description="Show notifications when transfers complete or incoming requests arrive" divider>
                     <Toggle
                       checked={settings.notificationsEnabled}

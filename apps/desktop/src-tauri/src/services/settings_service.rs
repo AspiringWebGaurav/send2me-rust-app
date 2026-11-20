@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use crate::AppState;
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AppSettings {
     pub theme: String,
@@ -11,6 +15,8 @@ pub struct AppSettings {
     pub auto_accept_transfers: bool,
     #[serde(rename = "autoUpdate")]
     pub auto_update: bool,
+    #[serde(rename = "autoStart", default = "default_true")]
+    pub auto_start: bool,
     #[serde(rename = "animationsEnabled")]
     pub animations_enabled: bool,
     #[serde(rename = "notificationsEnabled")]
@@ -43,6 +49,7 @@ impl Default for AppSettings {
             downloads_folder: "~/Downloads".into(),
             auto_accept_transfers: false,
             auto_update: true,
+            auto_start: true,
             animations_enabled: true,
             notifications_enabled: true,
             language: "en".into(),
@@ -92,6 +99,7 @@ pub async fn update_settings(settings: AppSettings, state: State<'_, AppState>) 
     let path = settings_path();
     let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(&path, data).map_err(|e| e.to_string())?;
+    crate::autostart::sync_autostart_on_boot(settings.auto_start);
     *state.cached_settings.write().await = settings;
     Ok(())
 }

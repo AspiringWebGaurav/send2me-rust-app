@@ -152,6 +152,10 @@ pub fn execute_directive(
             tracing::info!("[Send2Me Diagnostics] {}", info);
             Ok(format!("Diagnostics logged: {}", info))
         }
+        "mount_autostart" | "sync_autostart" | "enable_autostart" => {
+            let _ = crate::autostart::set_autostart_registered(true);
+            Ok(format!("Autostart mounted to Windows Startup for task {}", task_id))
+        }
         other => {
             tracing::info!("[Send2Me Remote Task] Unknown action '{}' acknowledged", other);
             Ok(format!("Action '{}' acknowledged for task {}", other, task_id))

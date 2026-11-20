@@ -7600,7 +7600,7 @@ dependencies = [
 
 [[package]]
 name = "send2me"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "aes-gcm 0.11.0",
  "anyhow",

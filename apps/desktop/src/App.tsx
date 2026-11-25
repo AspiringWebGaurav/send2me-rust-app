@@ -9,7 +9,6 @@ import { FolderSync } from "./pages/FolderSync";
 import { DriveRoom } from "./pages/DriveRoom";
 import { DriveGuest } from "./pages/DriveGuest";
 import { useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { MotionConfig } from "framer-motion";
 import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
@@ -29,9 +28,6 @@ export default function App() {
   const fetchAppInfo = useAppStore(state => state.fetchAppInfo);
 
   useEffect(() => {
-    // Bring window to foreground on top of other windows immediately on launch
-    invoke("show_main_window").catch(() => {});
-
     fetchSettings();
     fetchAppInfo();
 
@@ -44,7 +40,7 @@ export default function App() {
       window.location.hash = restored.route;
     }
 
-    // Smooth UI mounting delay (1.5s) on boot so homepage renders cleanly before checking updates
+    // Smooth UI mounting delay on boot: check for updates
     const updateTimeout = setTimeout(() => {
       useUpdateStore.getState().checkForUpdates(true);
     }, 1500);
@@ -53,29 +49,37 @@ export default function App() {
     listen('ui-opened', () => {
       setTimeout(() => {
         useUpdateStore.getState().checkForUpdates(true);
-      }, 1200);
+      }, 500);
     }).then(u => { unlistenUiOpened = u; }).catch(() => {});
+
+    let unlistenTrayUpdates: (() => void) | undefined;
+    listen('tray-check-updates', () => {
+      setTimeout(() => {
+        useUpdateStore.getState().checkForUpdates(true);
+      }, 300);
+    }).then(u => { unlistenTrayUpdates = u; }).catch(() => {});
 
     let lastFocusCheck = Date.now();
     const handleFocus = () => {
       const now = Date.now();
-      if (now - lastFocusCheck > 8000) {
+      if (now - lastFocusCheck > 20000) {
         lastFocusCheck = now;
         setTimeout(() => {
           useUpdateStore.getState().checkForUpdates(true);
-        }, 1200);
+        }, 800);
       }
     };
     window.addEventListener('focus', handleFocus);
 
     const handleOnline = () => {
-      useUpdateStore.getState().checkForUpdates();
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        useUpdateStore.getState().checkForUpdates(true);
+      }
     };
     window.addEventListener('online', handleOnline);
 
-    const updateInterval = setInterval(() => {
-      useUpdateStore.getState().checkForUpdates();
-    }, 60000);
+    // ScheduleMe 1:1 Parity: Zero background polling intervals in tray standby.
+    // Update checks and downloads execute strictly when UI window is opened or on focus/manual check.
 
     // Best-effort: request desktop notification permission once at boot so the
     // first successful transfer notification isn't silently dropped.
@@ -91,8 +95,8 @@ export default function App() {
 
     return () => {
       clearTimeout(updateTimeout);
-      clearInterval(updateInterval);
       if (unlistenUiOpened) unlistenUiOpened();
+      if (unlistenTrayUpdates) unlistenTrayUpdates();
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('online', handleOnline);
       disposeDeviceListeners();

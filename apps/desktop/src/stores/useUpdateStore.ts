@@ -167,9 +167,10 @@ export const useUpdateStore = create<UpdateStoreState>((set, get) => {
 
         const currentVer = get().currentVersion;
         if (manifest?.version && isNewerVersion(manifest.version, currentVer)) {
-          const cleanVer = manifest.version.replace(/^v/i, '');
+          const cleanVer = manifest.version.replace(/^v+/i, '');
           const targetPlatform = manifest.platforms?.['windows-x86_64'];
-          const downloadUrl = targetPlatform?.url || manifest.url || `https://gphost.eu.cc/api/v1/releases/send2me/download/${cleanVer}`;
+          const rawUrl = targetPlatform?.url || manifest.url || `https://gphost.eu.cc/api/v1/releases/send2me/download/${cleanVer}`;
+          const downloadUrl = rawUrl.includes('?') ? `${rawUrl}&_t=${Date.now()}` : `${rawUrl}?_t=${Date.now()}`;
 
           // Check if active file transfers are currently in-flight
           if (hasActiveFileTransfers()) {
@@ -195,7 +196,17 @@ export const useUpdateStore = create<UpdateStoreState>((set, get) => {
             await get().evaluateAndApplyUpdate(true);
           } else {
             set({ status: 'available' });
-            invoke('cmd_download_and_stage_update', { url: downloadUrl, targetVersion: cleanVer }).catch(() => {});
+            // ScheduleMe 1:1 Parity: Never download or restart while minimized in tray.
+            const isUiVisible = typeof document !== 'undefined' && document.visibilityState === 'visible';
+            if (isUiVisible) {
+              invoke('cmd_download_and_stage_update', { url: downloadUrl, targetVersion: cleanVer })
+                .then(async () => {
+                  if (!isUserOperating() && !hasActiveFileTransfers()) {
+                    await get().evaluateAndApplyUpdate(false);
+                  }
+                })
+                .catch(() => {});
+            }
           }
         } else {
           set({
@@ -228,9 +239,10 @@ export const useUpdateStore = create<UpdateStoreState>((set, get) => {
         return;
       }
 
-      const cleanVer = manifest.version.replace(/^v/i, '');
+      const cleanVer = manifest.version.replace(/^v+/i, '');
       const targetPlatform = manifest.platforms?.['windows-x86_64'];
-      const downloadUrl = targetPlatform?.url || manifest.url || `https://gphost.eu.cc/api/v1/releases/send2me/download/${cleanVer}`;
+      const rawUrl = targetPlatform?.url || manifest.url || `https://gphost.eu.cc/api/v1/releases/send2me/download/${cleanVer}`;
+      const downloadUrl = rawUrl.includes('?') ? `${rawUrl}&_t=${Date.now()}` : `${rawUrl}?_t=${Date.now()}`;
 
       // User activity protection: if active transfers are running, keep queued
       if (hasActiveFileTransfers()) {

@@ -8,6 +8,64 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <title>Send2Me</title>
+    <script>
+      // Early synchronous reload & context menu lockdown for production runtime (blocks Ctrl+F5, Ctrl+Shift+R, F5, Ctrl+R before bundle loads)
+      try {
+        (function() {
+          var isDev = false;
+          try {
+            if (window.location && window.location.port && (window.location.port === '1420' || window.location.port === '5173' || window.location.port === '3000')) {
+              if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                isDev = true;
+              }
+            }
+          } catch (e) {}
+
+          if (!isDev) {
+            var blockKey = function(e) {
+              var key = (e.key || '').toLowerCase();
+              var code = e.code || '';
+              var isCtrlOrMeta = (e.ctrlKey || e.metaKey) && !e.altKey;
+
+              var isF5 = key === 'f5' || code === 'F5' || e.keyCode === 116 || e.which === 116;
+              var isRefresh = key === 'browserrefresh' || key === 'refresh';
+              var isReloadR = isCtrlOrMeta && (key === 'r' || code === 'KeyR' || e.keyCode === 82 || e.which === 82);
+              var isDevTools = key === 'f12' || code === 'F12' || (isCtrlOrMeta && e.shiftKey && (key === 'i' || key === 'j' || key === 'c' || code === 'KeyI' || code === 'KeyJ' || code === 'KeyC'));
+              var isBrowserAction = isCtrlOrMeta && (key === 'p' || key === 's' || key === 'u' || code === 'KeyP' || code === 'KeyS' || code === 'KeyU');
+              var isCaretOrFind = key === 'f7' || key === 'f3' || (isCtrlOrMeta && (key === 'f' || key === 'g'));
+              var isHistoryNav = e.altKey && (key === 'arrowleft' || key === 'arrowright' || code === 'ArrowLeft' || code === 'ArrowRight');
+
+              if (isF5 || isRefresh || isReloadR || isDevTools || isBrowserAction || isCaretOrFind || isHistoryNav) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof e.stopImmediatePropagation === 'function') {
+                  e.stopImmediatePropagation();
+                }
+                return false;
+              }
+            };
+
+            var blockContext = function(e) {
+              var target = e.target;
+              var tag = target && target.tagName ? target.tagName.toUpperCase() : '';
+              var isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || (target && target.isContentEditable) || (target && typeof target.closest === 'function' && target.closest('[contenteditable="true"], .ProseMirror'));
+              if (!isEditable) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+              }
+            };
+
+            window.addEventListener('keydown', blockKey, { capture: true, passive: false });
+            window.addEventListener('keyup', blockKey, { capture: true, passive: false });
+            document.addEventListener('keydown', blockKey, { capture: true, passive: false });
+            document.addEventListener('keyup', blockKey, { capture: true, passive: false });
+            window.addEventListener('contextmenu', blockContext, { capture: true, passive: false });
+            document.addEventListener('contextmenu', blockContext, { capture: true, passive: false });
+          }
+        })();
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

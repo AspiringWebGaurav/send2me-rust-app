@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { open } from '@tauri-apps/plugin-dialog';
+import { listen } from '@tauri-apps/api/event';
 import { ArrowUp, ArrowDown, RefreshCw, Unlock, Link2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -70,6 +71,16 @@ export function Dashboard() {
     fetchSettings();
     fetchBondedDevices();
   }, [fetchAppInfo, fetchLocalDevice, fetchHistory, fetchActiveTransfers, fetchSettings, fetchBondedDevices]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen('open-send-picker', () => {
+      handleSendClick();
+    }).then(u => { unlisten = u; }).catch(() => {});
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   const handleSendClick = async () => {
     try {

@@ -17,6 +17,8 @@ export const ScheduleMeVersionLockup: React.FC = () => {
       return 'CHECKING';
     }
     switch (status) {
+      case 'available':
+        return 'UPDATE AVAILABLE';
       case 'downloading':
         return `${pct}%`;
       case 'verifying':
@@ -117,8 +119,8 @@ export const ScheduleMeVersionLockup: React.FC = () => {
       data-testid="scheduleme-version-lockup"
       title={`Send2Me v${cleanVersion}`}
       onClick={() => {
-        if (!isChecking && (status === 'idle' || status === 'error' || status === 'available')) {
-          useUpdateStore.getState().evaluateAndApplyUpdate();
+        if (!isChecking) {
+          useUpdateStore.getState().checkForUpdates(true);
         }
       }}
       className="relative overflow-hidden inline-flex items-center justify-center font-mono text-[10.5px] uppercase tracking-wider select-none text-muted-foreground/80 cursor-pointer px-2.5 py-1 min-w-[145px]"

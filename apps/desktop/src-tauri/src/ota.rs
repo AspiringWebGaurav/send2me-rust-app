@@ -1,4 +1,5 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use tauri::Manager;
 use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce, Key
@@ -105,9 +106,23 @@ pub async fn download_and_stage_update(
         .build()
         .map_err(|e| e.to_string())?;
 
-    tracing::info!("[Send2Me OTA] Downloading update from {} ...", url);
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let download_url = if !url.contains("_t=") {
+        if url.contains('?') {
+            format!("{}&_t={}", url, now_ms)
+        } else {
+            format!("{}?_t={}", url, now_ms)
+        }
+    } else {
+        url.to_string()
+    };
+
+    tracing::info!("[Send2Me OTA] Downloading update from {} ...", download_url);
     let resp = client
-        .get(url)
+        .get(&download_url)
         .header("User-Agent", "Send2Me-Desktop-OTA/0.0.1")
         .send()
         .await
@@ -119,6 +134,11 @@ pub async fn download_and_stage_update(
 
     let bytes = resp.bytes().await.map_err(|e| format!("Failed to read stream: {}", e))?;
     tracing::info!("[Send2Me OTA] Downloaded {} bytes. Decrypting container in memory...", bytes.len());
+
+    if bytes.starts_with(b"<?xml") || bytes.starts_with(b"<Error") {
+        let msg = String::from_utf8_lossy(&bytes[..bytes.len().min(300)]);
+        return Err(format!("Remote storage returned error response: {}", msg));
+    }
 
     let payload = decrypt_ota_container(&bytes)?;
     tracing::info!("[Send2Me OTA] Container decrypted successfully ({} bytes). Verified PE MZ header.", payload.len());
@@ -212,12 +232,22 @@ pub fn apply_staged_update_and_restart(
         // Dynamically synchronize Windows Installed Apps Registry to target version
         sync_windows_installed_version(_target_version);
 
+        // Check if main window was actually visible before restart (ScheduleMe 1:1)
+        let was_main_open = app
+            .get_webview_window("main")
+            .and_then(|w| w.is_visible().ok())
+            .unwrap_or(false);
+
         // Win32 Detached Spawn
         let mut cmd = std::process::Command::new(&current_exe);
         cmd.arg("--update-restart");
         cmd.arg("--restarted");
         cmd.arg(format!("--parent-pid={}", std::process::id()));
-        cmd.arg("--show");
+        if was_main_open {
+            cmd.arg("--show");
+        } else {
+            cmd.arg("--autostart");
+        }
         cmd.stdin(std::process::Stdio::null());
         cmd.stdout(std::process::Stdio::null());
         cmd.stderr(std::process::Stdio::null());

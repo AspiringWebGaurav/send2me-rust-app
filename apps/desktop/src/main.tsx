@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
+import { installProductionLockdown } from './utils/productionGuard.ts'
+
+// Initialize early capture reload and refresh lockdown guard across all application windows
+installProductionLockdown()
 
 // Browser preview compatibility layer:
 // If running in a regular web browser (outside native Tauri webview),
@@ -79,4 +83,3 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>,
 )
-

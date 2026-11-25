@@ -99,7 +99,45 @@ fn wait_for_parent_exit() {
     }
 }
 
+#[cfg(target_os = "windows")]
+pub fn set_process_priority_background(background: bool) {
+    unsafe {
+        extern "system" {
+            fn GetCurrentProcess() -> *mut std::ffi::c_void;
+            fn SetPriorityClass(hProcess: *mut std::ffi::c_void, dwPriorityClass: u32) -> i32;
+        }
+        // BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+        // NORMAL_PRIORITY_CLASS = 0x00000020
+        let priority = if background { 0x00004000 } else { 0x00000020 };
+        let _ = SetPriorityClass(GetCurrentProcess(), priority);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn set_process_priority_background(_background: bool) {}
+
+#[cfg(target_os = "windows")]
+pub fn trim_process_working_set() {
+    unsafe {
+        extern "system" {
+            fn GetCurrentProcess() -> *mut std::ffi::c_void;
+            fn SetProcessWorkingSetSize(
+                hProcess: *mut std::ffi::c_void,
+                dwMinimumWorkingSetSize: usize,
+                dwMaximumWorkingSetSize: usize,
+            ) -> i32;
+        }
+        let _ = SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn trim_process_working_set() {}
+
 pub fn restore_and_focus_window(win: &tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    set_process_priority_background(false);
+
     let _ = win.unminimize();
     let _ = win.show();
     let _ = win.set_focus();
@@ -237,20 +275,8 @@ fn cmd_clean_superseded_old_binaries() -> Result<bool, String> {
 
 #[tauri::command]
 fn cmd_trim_memory() -> Result<bool, String> {
-    #[cfg(target_os = "windows")]
-    {
-        extern "system" {
-            fn GetCurrentProcess() -> isize;
-            fn SetProcessWorkingSetSize(hProcess: isize, dwMinimumWorkingSetSize: usize, dwMaximumWorkingSetSize: usize) -> i32;
-        }
-        unsafe {
-            let proc = GetCurrentProcess();
-            SetProcessWorkingSetSize(proc, usize::MAX, usize::MAX);
-        }
-        return Ok(true);
-    }
-    #[cfg(not(target_os = "windows"))]
-    Ok(false)
+    trim_process_working_set();
+    Ok(true)
 }
 
 #[tauri::command]
@@ -366,31 +392,42 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
+    // 1. Primary Actions
     let open_i = MenuItem::with_id(app, "open", "Open Send2Me Dashboard", true, None::<&str>)
         .map_err(|e| e.to_string())?;
+    let send_i = MenuItem::with_id(app, "send_files", "Send Files...", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let downloads_i = MenuItem::with_id(app, "open_downloads", "Open Received Folder", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+
+    let sep1 = PredefinedMenuItem::separator(app)
+        .map_err(|e| e.to_string())?;
+
+    // 2. Monitoring & Hubs
     let sync_i = MenuItem::with_id(app, "sync", "Folder Sync Console", true, None::<&str>)
         .map_err(|e| e.to_string())?;
     let transfers_i = MenuItem::with_id(app, "transfers", "Active Transfers", true, None::<&str>)
         .map_err(|e| e.to_string())?;
     let history_i = MenuItem::with_id(app, "history", "Transfer History & Logs", true, None::<&str>)
         .map_err(|e| e.to_string())?;
-    let sep1 = PredefinedMenuItem::separator(app)
-        .map_err(|e| e.to_string())?;
     let devices_i = MenuItem::with_id(app, "devices", "Bonded Devices", true, None::<&str>)
         .map_err(|e| e.to_string())?;
-    let settings_i = MenuItem::with_id(app, "settings", "App Settings", true, None::<&str>)
-        .map_err(|e| e.to_string())?;
+
     let sep2 = PredefinedMenuItem::separator(app)
         .map_err(|e| e.to_string())?;
-    let exit_i = MenuItem::with_id(app, "exit", "Exit Send2Me", true, None::<&str>)
+
+    // 3. Settings & Maintenance (Exit option completely removed per user directive)
+    let settings_i = MenuItem::with_id(app, "settings", "App Settings", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let updates_i = MenuItem::with_id(app, "check_updates", "Check for Updates", true, None::<&str>)
         .map_err(|e| e.to_string())?;
 
     let menu = Menu::with_items(app, &[
-        &open_i, &sync_i, &transfers_i, &history_i, 
-        &sep1, 
-        &devices_i, &settings_i, 
-        &sep2, 
-        &exit_i
+        &open_i, &send_i, &downloads_i,
+        &sep1,
+        &sync_i, &transfers_i, &history_i, &devices_i,
+        &sep2,
+        &settings_i, &updates_i,
     ])
     .map_err(|e| e.to_string())?;
 
@@ -404,23 +441,71 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
 
     builder
         .on_menu_event(|app, event| {
-            if event.id.as_ref() == "exit" {
-                app.exit(0);
-                return;
-            }
-            if let Some(window) = app.get_webview_window("main") {
-                restore_and_focus_window(&window);
-                let _ = window.emit("ui-opened", ());
-                let target = match event.id.as_ref() {
-                    "open" => "/",
-                    "sync" => "/sync",
-                    "transfers" => "/transfers",
-                    "history" => "/history",
-                    "devices" => "/devices",
-                    "settings" => "/settings",
-                    _ => "/",
-                };
-                let _ = window.emit("tray-navigate", target);
+            match event.id.as_ref() {
+                "open_downloads" => {
+                    let settings = services::settings_service::get_settings();
+                    let raw = settings.downloads_folder;
+                    let s = raw.to_string();
+                    let folder = if s.starts_with("~/") || s.starts_with("~\\") {
+                        if let Some(mut home) = dirs::home_dir() {
+                            home.push(&s[2..]);
+                            home
+                        } else {
+                            dirs::download_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default())
+                        }
+                    } else if s.is_empty() {
+                        dirs::download_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default())
+                    } else {
+                        std::path::PathBuf::from(s)
+                    };
+
+                    let _ = std::fs::create_dir_all(&folder);
+                    #[cfg(target_os = "windows")]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        let _ = std::process::Command::new("explorer.exe")
+                            .arg(&folder)
+                            .creation_flags(0x08000000)
+                            .spawn();
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        let _ = std::process::Command::new("explorer.exe")
+                            .arg(&folder)
+                            .spawn();
+                    }
+                }
+                "send_files" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        restore_and_focus_window(&window);
+                        let _ = window.emit("ui-opened", ());
+                        let _ = window.emit("tray-navigate", "/");
+                        let _ = window.emit("open-send-picker", ());
+                    }
+                }
+                "check_updates" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        restore_and_focus_window(&window);
+                        let _ = window.emit("ui-opened", ());
+                        let _ = window.emit("tray-check-updates", ());
+                    }
+                }
+                _ => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        restore_and_focus_window(&window);
+                        let _ = window.emit("ui-opened", ());
+                        let target = match event.id.as_ref() {
+                            "open" => "/",
+                            "sync" => "/sync",
+                            "transfers" => "/transfers",
+                            "history" => "/history",
+                            "devices" => "/devices",
+                            "settings" => "/settings",
+                            _ => "/",
+                        };
+                        let _ = window.emit("tray-navigate", target);
+                    }
+                }
             }
         })
         .on_tray_icon_event(|tray, event| {
@@ -641,6 +726,8 @@ pub fn run() {
             let current_info = get_app_info(app.handle().clone());
             ota::sync_windows_installed_version(&current_info.version);
 
+            let is_restarted = std::env::args().any(|a| a == "--restarted" || a == "--update-restart");
+            let is_explicit_show = std::env::args().any(|a| a == "--show");
             let is_background_boot = std::env::args().any(|arg| {
                 arg == "--background" || arg == "--silent" || arg == "--minimized" || arg == "--autostart" || arg == "-b"
             });
@@ -653,10 +740,27 @@ pub fn run() {
                 let _ = win.set_maximizable(false);
                 let _ = win.set_minimizable(false);
                 let _ = win.center();
-                if !is_background_boot {
+
+                // 1:1 ScheduleMe / Downex rule:
+                // If started with autostart/background OR if restarted from a background update without explicit --show:
+                // Stay STRICTLY hidden in system tray! Zero surprise window popups!
+                let should_show = if is_background_boot {
+                    false
+                } else if is_restarted {
+                    is_explicit_show
+                } else {
+                    true
+                };
+
+                if should_show {
                     restore_and_focus_window(&win);
                 } else {
                     let _ = win.hide();
+                    #[cfg(target_os = "windows")]
+                    {
+                        set_process_priority_background(true);
+                        trim_process_working_set();
+                    }
                 }
             }
 
@@ -972,6 +1076,11 @@ pub fn run() {
                     if window.app_handle().tray_by_id("main-tray").is_some() {
                         let _ = window.hide();
                         api.prevent_close();
+                        #[cfg(target_os = "windows")]
+                        {
+                            set_process_priority_background(true);
+                            trim_process_working_set();
+                        }
                     }
                 }
             }
